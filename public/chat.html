@@ -35,76 +35,21 @@
 
   <div class="hint">If the bot can’t answer from approved sources, it will offer to chat with a person.</div>
 
-  <script>
-    const log = document.getElementById('log');
-    const form = document.getElementById('chat-form');
-    const input = document.getElementById('text');
-   const talkBtn = document.getElementById('talk-to-human');
-  
-    // Enable/disable button based on widget readiness
-    function enableTalkButton() {
-      if (window.HubSpotConversations?.widget?.open) {
-        talkBtn.disabled = false;
-        talkBtn.title = '';
-      } else {
-        talkBtn.disabled = true;
-        talkBtn.title = 'Loading chat…';
-      }
-    }
-  
-    // Click → open HubSpot widget
-    talkBtn.addEventListener('click', () => {
-      if (window.HubSpotConversations?.widget?.open) {
-        window.HubSpotConversations.widget.open();
-      } else {
-        // If not ready yet, queue it
-        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-        window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
-        // Gentle fallback try after a short delay
-        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-      }
-    });
-  
-    // Call once now; call again when HubSpot signals readiness
-    enableTalkButton();
-    window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-    window.hsConversationsOnReady.push(enableTalkButton);
-    
-    function add(role, text) {
-      const p = document.createElement('p');
-      p.className = 'msg ' + role;
-      p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
-      log.appendChild(p);
-      log.scrollTop = log.scrollHeight;
-    }
+<script>
+  const log = document.getElementById('log');
+  const form = document.getElementById('chat-form');
+  const input = document.getElementById('text');
+  const talkBtn = document.getElementById('talk-to-human');
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      add('user', text);
-      input.value = '';
-      try {
-        const r = await fetch('/api/clc-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-        const data = await r.json();
-        add('assistant', data.reply || '(no reply)');
-        if (data.handoff) {
-          // Try to open immediately if the widget is ready
-          //if (window.HubSpotConversations?.widget?.open) {
-            //window.HubSpotConversations.widget.open();
-         // } else {
-            // Otherwise, wait for the widget to load, then open
-          //  const tryOpen = () => window.HubSpotConversations?.widget?.open?.();
-            // HubSpot emits this when the widget is ready
-          //  window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-         //   window.hsConversationsOnReady.push(tryOpen);
-            // Fallback: attempt again after a short delay
-         //   setTimeout(tryOpen, 1500);
-function showHandoffBanner() {
+  function add(role, text) {
+    const p = document.createElement('p');
+    p.className = 'msg ' + role;
+    p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
+    log.appendChild(p);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function showHandoffBanner() {
     const div = document.createElement('div');
     div.style.cssText =
       'margin-top:0.75rem;padding:0.75rem;border:1px solid #e0b800;background:#fff9db;border-radius:8px;';
@@ -145,22 +90,32 @@ function showHandoffBanner() {
       const data = await r.json();
       add('assistant', data.reply || '(no reply)');
       if (data.handoff) {
-        showHandoffBanner(); // <-- now a button instead of auto-open
+        showHandoffBanner();
       }
     } catch (err) {
       add('assistant', 'Sorry—there was an error contacting the server.');
       console.error(err);
     }
   });
-          
-          }
-        }
-      } catch (err) {
-        add('assistant', 'Sorry—there was an error contacting the server.');
-        console.error(err);
-      }
-    });
-  </script>
+
+  // manual "Talk to a person" button
+  function enableTalkButton() {
+    if (window.HubSpotConversations?.widget?.open) {
+      talkBtn.disabled = false;
+      talkBtn.title = '';
+    } else {
+      talkBtn.disabled = true;
+      talkBtn.title = 'Loading chat…';
+    }
+  }
+
+  talkBtn.addEventListener('click', () => {
+    if (window.HubSpotConversations?.widget?.open) {
+      window.HubSpotConversations.widget.open();
+    } else {
+      window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+      window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?
+
 <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
 </body>
 </html>
