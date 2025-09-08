@@ -54,8 +54,18 @@
         const data = await r.json();
         add('assistant', data.reply || '(no reply)');
         if (data.handoff) {
-          // We'll wire HubSpot here in the next step.
-          alert("The bot suggests chatting with a person. (We’ll wire HubSpot next.)");
+          // Try to open immediately if the widget is ready
+          if (window.HubSpotConversations?.widget?.open) {
+            window.HubSpotConversations.widget.open();
+          } else {
+            // Otherwise, wait for the widget to load, then open
+            const tryOpen = () => window.HubSpotConversations?.widget?.open?.();
+            // HubSpot emits this when the widget is ready
+            window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+            window.hsConversationsOnReady.push(tryOpen);
+            // Fallback: attempt again after a short delay
+            setTimeout(tryOpen, 1500);
+          }
         }
       } catch (err) {
         add('assistant', 'Sorry—there was an error contacting the server.');
