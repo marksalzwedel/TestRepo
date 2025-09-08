@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CLC Chatbot</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 720px; }
+    #log { border: 1px solid #ccc; padding: 1rem; min-height: 240px; border-radius: 8px; }
+    .msg { margin: 0.25rem 0; white-space: pre-wrap; }
+    .user { font-weight: 600; }
+    form { margin-top: 1rem; display: flex; gap: 0.5rem; }
+    input[type="text"] { flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid #bbb; }
+    button { padding: 0.6rem 1rem; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; cursor: pointer; }
+    .hint { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>CLC Chatbot</h1>
+  <div id="log" aria-live="polite"></div>
+
+  <form id="chat-form">
+    <input id="text" type="text" placeholder="Type your message…" autocomplete="off" />
+    <button type="submit">Send</button>
+  </form>
+
+  <div class="hint">If the bot can’t answer from approved sources, it will offer to chat with a person.</div>
+
+  <script>
+    const log = document.getElementById('log');
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('text');
+
+    function add(role, text) {
+      const p = document.createElement('p');
+      p.className = 'msg ' + role;
+      p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
+      log.appendChild(p);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      add('user', text);
+      input.value = '';
+      try {
+        const r = await fetch('/api/clc-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const data = await r.json();
+        add('assistant', data.reply || '(no reply)');
+        if (data.handoff) {
+          // We'll wire HubSpot here in the next step.
+          alert("The bot suggests chatting with a person. (We’ll wire HubSpot next.)");
+        }
+      } catch (err) {
+        add('assistant', 'Sorry—there was an error contacting the server.');
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
