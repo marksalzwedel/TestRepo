@@ -17,6 +17,11 @@
 </head>
 <body>
   <h1>CLC Chatbot</h1>
+  <button id="talk-to-human" style="float:right; margin:-2.2rem 0 1rem 0; padding:0.5rem 0.8rem; border:1px solid #444; border-radius:6px; background:#fff; cursor:pointer;">
+    Talk to a person
+  </button>
+  <div style="clear:both"></div>
+
   <div id="log" aria-live="polite"></div>
 
   <form id="chat-form">
@@ -30,7 +35,37 @@
     const log = document.getElementById('log');
     const form = document.getElementById('chat-form');
     const input = document.getElementById('text');
-
+   const talkBtn = document.getElementById('talk-to-human');
+  
+    // Enable/disable button based on widget readiness
+    function enableTalkButton() {
+      if (window.HubSpotConversations?.widget?.open) {
+        talkBtn.disabled = false;
+        talkBtn.title = '';
+      } else {
+        talkBtn.disabled = true;
+        talkBtn.title = 'Loading chat…';
+      }
+    }
+  
+    // Click → open HubSpot widget
+    talkBtn.addEventListener('click', () => {
+      if (window.HubSpotConversations?.widget?.open) {
+        window.HubSpotConversations.widget.open();
+      } else {
+        // If not ready yet, queue it
+        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+        window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
+        // Gentle fallback try after a short delay
+        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+      }
+    });
+  
+    // Call once now; call again when HubSpot signals readiness
+    enableTalkButton();
+    window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+    window.hsConversationsOnReady.push(enableTalkButton);
+    
     function add(role, text) {
       const p = document.createElement('p');
       p.className = 'msg ' + role;
