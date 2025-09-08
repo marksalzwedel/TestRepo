@@ -5,37 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CLC Chatbot</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 720px; }
-    #log { border: 1px solid #ccc; padding: 1rem; min-height: 240px; border-radius: 8px; }
-    .msg { margin: 0.25rem 0; white-space: pre-wrap; }
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem auto; max-width: 720px; line-height: 1.5; }
+    h1 { margin: 0 0 1rem 0; }
+    #bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+    #talk-to-human {
+      padding: .5rem .8rem; border: 1px solid #0056b3; border-radius: 6px;
+      background: #0d6efd; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    #talk-to-human[disabled] { opacity: .5; cursor: not-allowed; }
+    #log { border: 1px solid #ccc; padding: 1rem; min-height: 260px; border-radius: 8px; background: #fff; }
+    .msg { margin: .25rem 0; white-space: pre-wrap; }
     .user { font-weight: 600; }
-    form { margin-top: 1rem; display: flex; gap: 0.5rem; }
-    input[type="text"] { flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid #bbb; }
-    button { padding: 0.6rem 1rem; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; cursor: pointer; }
-    .hint { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+    form { margin-top: 1rem; display: flex; gap: .5rem; }
+    input[type="text"] { flex: 1; padding: .6rem; border-radius: 6px; border: 1px solid #bbb; }
+    button[type="submit"] { padding: .6rem 1rem; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; cursor: pointer; }
+    .hint { color: #666; font-size: .9rem; margin-top: .5rem; }
+    .handoff {
+      margin-top: .75rem; padding: .75rem; border: 1px solid #e0b800; background: #fff9db; border-radius: 8px;
+    }
+    .handoff button {
+      margin-top: .5rem; padding: .4rem .8rem; border: 1px solid #444; border-radius: 6px;
+      background: #0d6efd; color: #fff; font-weight: 600; cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <h1>CLC Chatbot</h1>
-  <button id="talk-to-human" 
-    style="float:right; margin:-2.2rem 0 1rem 0; 
-           padding:0.5rem 0.8rem; 
-           border:1px solid #0056b3; border-radius:6px; 
-           background:#0d6efd; color:#fff; font-weight:600; cursor:pointer;">
-    Talk to a person
-  </button>
-  <div style="clear:both"></div>
+  <div id="bar">
+    <h1>CLC Chatbot</h1>
+    <button id="talk-to-human" title="Open live chat">Talk to a person</button>
+  </div>
 
   <div id="log" aria-live="polite"></div>
 
-  <form id="chat-form">
-    <input id="text" type="text" placeholder="Type your message…" autocomplete="off" />
+  <form id="chat-form" autocomplete="off">
+    <input id="text" type="text" placeholder="Hi! Ask about service times, location, or a WELS topic…" />
     <button type="submit">Send</button>
   </form>
 
-  <div class="hint">If the bot can’t answer from approved sources, it will offer to chat with a person.</div>
-
-  <!-- other HTML above -->
+  <div class="hint">If the bot can’t answer from approved sources, it will offer to connect you with a person.</div>
 
   <script>
     const log = document.getElementById('log');
@@ -53,16 +61,11 @@
 
     function showHandoffBanner() {
       const div = document.createElement('div');
-      div.style.cssText =
-        'margin-top:0.75rem;padding:0.75rem;border:1px solid #e0b800;background:#fff9db;border-radius:8px;';
+      div.className = 'handoff';
       div.innerHTML = `
         <strong>Would you like to chat with a person?</strong><br/>
         We’re happy to help—click below and a staff member will be with you soon.<br/>
-        <button id="open-hs" style="
-          margin-top:0.5rem;padding:0.4rem 0.8rem;border:1px solid #444;border-radius:6px;
-          background:#0d6efd;color:#fff;font-weight:600;cursor:pointer;">
-          Open live chat
-        </button>
+        <button id="open-hs">Open live chat</button>
       `;
       log.appendChild(div);
       const btn = div.querySelector('#open-hs');
@@ -72,9 +75,10 @@
         } else {
           window.hsConversationsOnReady = window.hsConversationsOnReady || [];
           window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
-          setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1500);
+          setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
         }
       });
+      log.scrollTop = log.scrollHeight;
     }
 
     form.addEventListener('submit', async (e) => {
@@ -89,28 +93,25 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text })
         });
-        const data = await r.json();
+        // Try to parse as JSON, but show a friendly message if it isn't
+        const raw = await r.text();
+        let data;
+        try { data = JSON.parse(raw); } catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
         add('assistant', data.reply || '(no reply)');
-        if (data.handoff) {
-          showHandoffBanner();
-        }
+        if (data.handoff) showHandoffBanner();
       } catch (err) {
         add('assistant', 'Sorry—there was an error contacting the server.');
         console.error(err);
       }
     });
 
-    // manual "Talk to a person" button
     function enableTalkButton() {
       if (window.HubSpotConversations?.widget?.open) {
-        talkBtn.disabled = false;
-        talkBtn.title = '';
+        talkBtn.disabled = false; talkBtn.title = '';
       } else {
-        talkBtn.disabled = true;
-        talkBtn.title = 'Loading chat…';
+        talkBtn.disabled = true; talkBtn.title = 'Loading chat…';
       }
     }
-
     talkBtn.addEventListener('click', () => {
       if (window.HubSpotConversations?.widget?.open) {
         window.HubSpotConversations.widget.open();
@@ -120,12 +121,12 @@
         setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
       }
     });
-
     enableTalkButton();
     window.hsConversationsOnReady = window.hsConversationsOnReady || [];
     window.hsConversationsOnReady.push(enableTalkButton);
   </script>
 
-<script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
+  <!-- Replace YOUR_PORTAL_ID with your numeric HubSpot portal ID; or remove this line if you don’t want HubSpot on this test page -->
+  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/YOUR_PORTAL_ID.js"></script>
 </body>
 </html>
