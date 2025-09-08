@@ -94,16 +94,65 @@
         add('assistant', data.reply || '(no reply)');
         if (data.handoff) {
           // Try to open immediately if the widget is ready
-          if (window.HubSpotConversations?.widget?.open) {
-            window.HubSpotConversations.widget.open();
-          } else {
+          //if (window.HubSpotConversations?.widget?.open) {
+            //window.HubSpotConversations.widget.open();
+         // } else {
             // Otherwise, wait for the widget to load, then open
-            const tryOpen = () => window.HubSpotConversations?.widget?.open?.();
+          //  const tryOpen = () => window.HubSpotConversations?.widget?.open?.();
             // HubSpot emits this when the widget is ready
-            window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-            window.hsConversationsOnReady.push(tryOpen);
+          //  window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+         //   window.hsConversationsOnReady.push(tryOpen);
             // Fallback: attempt again after a short delay
-            setTimeout(tryOpen, 1500);
+         //   setTimeout(tryOpen, 1500);
+function showHandoffBanner() {
+    const div = document.createElement('div');
+    div.style.cssText =
+      'margin-top:0.75rem;padding:0.75rem;border:1px solid #e0b800;background:#fff9db;border-radius:8px;';
+    div.innerHTML = `
+      <strong>Would you like to chat with a person?</strong><br/>
+      We’re happy to help—click below and a staff member will be with you soon.<br/>
+      <button id="open-hs" style="
+        margin-top:0.5rem;padding:0.4rem 0.8rem;border:1px solid #444;border-radius:6px;
+        background:#0d6efd;color:#fff;font-weight:600;cursor:pointer;">
+        Open live chat
+      </button>
+    `;
+    log.appendChild(div);
+    const btn = div.querySelector('#open-hs');
+    btn.addEventListener('click', () => {
+      if (window.HubSpotConversations?.widget?.open) {
+        window.HubSpotConversations.widget.open();
+      } else {
+        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+        window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
+        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1500);
+      }
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    add('user', text);
+    input.value = '';
+    try {
+      const r = await fetch('/api/clc-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      const data = await r.json();
+      add('assistant', data.reply || '(no reply)');
+      if (data.handoff) {
+        showHandoffBanner(); // <-- now a button instead of auto-open
+      }
+    } catch (err) {
+      add('assistant', 'Sorry—there was an error contacting the server.');
+      console.error(err);
+    }
+  });
+          
           }
         }
       } catch (err) {
