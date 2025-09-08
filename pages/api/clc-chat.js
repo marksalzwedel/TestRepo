@@ -1,6 +1,6 @@
 export const config = { runtime: 'edge' };
 
-// Bump this string any time you change behavior:
+// Bump this any time we change behavior:
 const VERSION = 'handoff-v2';
 
 const SYSTEM_PROMPT = `
@@ -22,7 +22,7 @@ FOOTER (always append):
 `.trim();
 
 export default async function handler(req) {
-  // NEW: allow a simple GET to verify deployed version
+  // New: GET returns version so we can verify deploys
   if (req.method === 'GET') {
     return new Response(JSON.stringify({ ok: true, version: VERSION }), {
       status: 200,
