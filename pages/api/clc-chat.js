@@ -1,7 +1,7 @@
 export const config = { runtime: 'edge' };
 
-// Bump this any time you change behavior; we'll echo it in responses to confirm deploys.
-const VERSION = 'handoff-v1';
+// Bump this string any time you change behavior:
+const VERSION = 'handoff-v2';
 
 const SYSTEM_PROMPT = `
 You are CLC Chatbot for Christ Lutheran Church (Eden Prairie, MN).
@@ -22,7 +22,18 @@ FOOTER (always append):
 `.trim();
 
 export default async function handler(req) {
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+  // NEW: allow a simple GET to verify deployed version
+  if (req.method === 'GET') {
+    return new Response(JSON.stringify({ ok: true, version: VERSION }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
   try {
     const { text } = await req.json();
     if (!text || typeof text !== 'string') {
@@ -56,15 +67,13 @@ export default async function handler(req) {
       data?.choices?.[0]?.message?.content?.trim()
       || 'I’m not certain based on our sources. Would you like to chat with a person?';
 
-    // Detect refusal exactly (case-insensitive on the fixed phrase)
     const handoff = /i’m not certain based on our sources/i.test(reply);
 
     return new Response(
       JSON.stringify({ reply, handoff, version: VERSION }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (err) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Server error', version: VERSION }), { status: 500 });
   }
 }
-
