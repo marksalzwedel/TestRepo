@@ -3,6 +3,7 @@ export const config = { runtime: 'edge' };
 // Bump this any time we change behavior:
 const VERSION = 'handoff-v2';
 
+
 const SYSTEM_PROMPT = `
 You are CLC Chatbot for Christ Lutheran Church (Eden Prairie, MN).
 
