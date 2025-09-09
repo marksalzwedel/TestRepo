@@ -10,6 +10,7 @@ const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat 
 const KB_FILES = [
   { name: 'ClcInfo', p: path.join(process.cwd(), 'data', 'ClcInfo.md') },
   { name: 'Theology', p: path.join(process.cwd(), 'data', 'Theology.md') },
+  { name: 'Marriage', p: path.join(process.cwd(), 'data', 'Marriage.md') },
   // { name: 'AnotherDoc', p: path.join(process.cwd(), 'data', 'AnotherDoc.md') },
 ];
 
