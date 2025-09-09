@@ -143,6 +143,14 @@ Style:
 • Keep sentences short; avoid jargon; use “we” and “you” where natural.
 `.trim();
 
+const PRINCIPLES_GUIDE = `
+When a question names a politician, party, or election, respond with principles:
+• Do NOT endorse/oppose any candidate or party.
+• Draw from Church & State and Christian Living doctrines (pray for leaders, respect authority, obey God rather than people when in conflict, act with love and justice, protect life, keep a clear conscience, exercise Christian freedom).
+• Give a short, pastoral, non-partisan answer: summarize 3–5 principles the asker can use.
+• Close with an offer: “If you want to talk this through, I can connect you with our pastor.”
+`.trim();
+
 const SYNTHESIS_GUIDE = `
 When the Selected Context covers multiple angles, synthesize them:
 • Start with a warm, direct answer to the question.
@@ -163,7 +171,13 @@ Example A: Happy to help! Our Sunday worship is at 9:30 AM. We’re at 16900 Mai
     content:
 `Example Q: Do you offer Sunday School?
 Example A: Yes! Sunday School meets at 10:35 AM following worship during the school year. If you’re bringing kids, I can share check-in details.`
-  }
+  },
+  {
+  role: 'system',
+  content:
+`Example Q: Should Christians support <Candidate>?
+Example A: Thanks for asking—this is important. Scripture urges us to pray for and respect leaders (1 Tim 2:1–2; Rom 13), to uphold what is right and protect life, and to act with love for our neighbors. WELS doesn’t endorse candidates; Christians use their freedom to weigh both character and policies against God’s moral will. After prayer and study, act with a clear conscience—and if you’d like to talk it through, I can connect you with our pastor.`
+}
 ];
 
 // ---------- HTTP handler ----------
@@ -199,9 +213,37 @@ module.exports = async function handler(req, res) {
   // Load KB and split into sections (across ALL .md files)
   const kb = await loadKB();
   const allSections = kb.flatMap(k => splitMarkdownIntoSections(k.text, k.name));
+// simple civic/politics detector
+function isCivicQuestion(q) {
+  const s = q.toLowerCase();
+  return /\b(vote|voting|election|candidate|president|governor|mayor|senator|trump|biden|party|republican|democrat|politic|policy|platform)\b/.test(s);
+}
+
+  // prefer sections from certain files for civic questions
+  function civicBoostSections(query, allSections) {
+    if (!isCivicQuestion(query)) return [];
+  
+    // Keep sections whose source name signals these two files (auto-loaded names are filenames w/o .md)
+    const preferred = allSections.filter(sec =>
+      /churchandstate|christianliving/i.test(sec.source || '')
+    );
+  
+    // Take at most 2 short, high-signal chunks to seed the context
+    const trimmed = [];
+    for (const sec of preferred) {
+      const chunk = `### ${sec.source}: ${sec.title}\n${sec.text}`.trim();
+      if (chunk.length <= 6000) trimmed.push(chunk);
+      if (trimmed.length >= 2) break;
+    }
+    return trimmed;
+  }
 
   // Select the most relevant sections
-  const picked = selectTopSections(text, allSections, /*maxSections*/ 4, /*maxCharsTotal*/ 20000);
+// Force a couple of principle sections for civic questions, then add the usual best matches.
+const boosted = civicBoostSections(text, allSections);         // 0–2 chunks
+const pickedTop = selectTopSections(text, allSections, 4, 20000); // existing selector
+const picked = [...boosted, ...pickedTop].slice(0, 5);         // cap total to ~4 chunks
+
   const pickedTitles = picked.map(s => s.split('\n')[0].replace(/^###\s*/, ''));
 
   const selectedContext = picked.length
@@ -211,6 +253,7 @@ module.exports = async function handler(req, res) {
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'system', content: STYLE_GUIDE },
+    { role: 'system', content: PRINCIPLES_GUIDE },
     { role: 'system', content: SYNTHESIS_GUIDE },
     ...FEW_SHOT,
     { role: 'system', content: `Use this exact refusal line when needed:\n${REFUSAL_LINE}` },
@@ -232,7 +275,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.35,
+        temperature: 0.38,
         messages
       })
     });
