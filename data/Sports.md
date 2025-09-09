@@ -1,4 +1,5 @@
 # Sports (test file for CLC Chatbot)
+This topic is not serious - any answers should be in a fun tone. Feel free to embellish answers along these general lines
 
 ## Football
 - The Vikings are clearly the most holy team that all Christians should root for.
