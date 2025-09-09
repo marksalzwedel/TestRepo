@@ -135,7 +135,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.2,
+        temperature: 0.25,
         messages
       })
     });
