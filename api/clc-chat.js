@@ -143,6 +143,14 @@ Style:
 • Keep sentences short; avoid jargon; use “we” and “you” where natural.
 `.trim();
 
+const SYNTHESIS_GUIDE = `
+When the Selected Context covers multiple angles, synthesize them:
+• Start with a warm, direct answer to the question.
+• Weave together key principles from the context; don't just quote—explain.
+• If helpful, add a short bulleted list (pattern, exceptions, how to check calendar, how to contact pastor).
+• Close with: “I can share more details if you’d like.” Avoid inventing facts beyond the context.
+`.trim();
+
 const FEW_SHOT = [
   {
     role: 'system',
@@ -193,7 +201,7 @@ module.exports = async function handler(req, res) {
   const allSections = kb.flatMap(k => splitMarkdownIntoSections(k.text, k.name));
 
   // Select the most relevant sections
-  const picked = selectTopSections(text, allSections, /*maxSections*/ 3, /*maxCharsTotal*/ 15000);
+  const picked = selectTopSections(text, allSections, /*maxSections*/ 4, /*maxCharsTotal*/ 20000);
   const pickedTitles = picked.map(s => s.split('\n')[0].replace(/^###\s*/, ''));
 
   const selectedContext = picked.length
@@ -203,6 +211,7 @@ module.exports = async function handler(req, res) {
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'system', content: STYLE_GUIDE },
+    { role: 'system', content: SYNTHESIS_GUIDE },
     ...FEW_SHOT,
     { role: 'system', content: `Use this exact refusal line when needed:\n${REFUSAL_LINE}` },
     { role: 'system', content: 'If sources/context are insufficient, use the refusal line verbatim. Do not improvise.' },
