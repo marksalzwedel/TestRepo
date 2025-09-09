@@ -1,47 +1,132 @@
-// api/clc-chat.js — CLC Chatbot with two local KB files (ClcInfo + Theology)
+// api/clc-chat.js — CLC Chatbot with section-selector mini-RAG across multiple MD files
 // Runtime: Node (Vercel root functions)
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v2';
-const INFO_PATH = path.join(process.cwd(), 'data', 'ClcInfo.md');
-const THEO_PATH = path.join(process.cwd(), 'data', 'Theology.md');
-
-// ---- tweak this to your exact custom refusal sentence (keep verbatim) ----
+const VERSION = 'kb-v3-selector';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
-// simple in-memory cache
-let INFO_CACHE = null;
-let THEO_CACHE = null;
+// Add more files here any time:
+const KB_FILES = [
+  { name: 'ClcInfo', p: path.join(process.cwd(), 'data', 'ClcInfo.md') },
+  { name: 'Theology', p: path.join(process.cwd(), 'data', 'Theology.md') },
+  // { name: 'AnotherDoc', p: path.join(process.cwd(), 'data', 'AnotherDoc.md') },
+];
 
-async function loadFileCached(pth, setterRef) {
-  if (setterRef.value !== null) return setterRef.value;
-  try {
-    const raw = await fs.readFile(pth, 'utf8');
-    // safety trim (very generous)
-    const maxChars = 80_000;
-    setterRef.value = raw.length > maxChars ? raw.slice(0, maxChars) : raw;
-  } catch {
-    setterRef.value = null;
+// ----------- UTIL: load all files & cache -----------
+let KB_CACHE = null; // [{ name, text }]
+async function loadKB() {
+  if (KB_CACHE) return KB_CACHE;
+  const out = [];
+  for (const f of KB_FILES) {
+    try {
+      const raw = await fs.readFile(f.p, 'utf8');
+      out.push({ name: f.name, text: raw });
+    } catch {
+      // Missing file is OK; we just skip it
+    }
   }
-  return setterRef.value;
+  KB_CACHE = out;
+  return KB_CACHE;
 }
 
-async function loadInfo() { return loadFileCached(INFO_PATH, { get value(){return INFO_CACHE;}, set value(v){INFO_CACHE=v;} }); }
-async function loadTheo() { return loadFileCached(THEO_PATH, { get value(){return THEO_CACHE;}, set value(v){THEO_CACHE=v;} }); }
+// ----------- SECTION SPLITTER -----------
+function splitMarkdownIntoSections(md, sourceName) {
+  // Split on headings; keep the heading line with the section
+  const lines = md.split(/\r?\n/);
+  const sections = [];
+  let current = { title: `${sourceName}: (intro)`, body: [] };
 
+  function pushCurrent() {
+    if (current && current.body.length) {
+      sections.push({
+        source: sourceName,
+        title: current.title,
+        text: current.body.join('\n').trim()
+      });
+    }
+  }
+
+  for (const line of lines) {
+    const m = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (m) {
+      // New heading starts a new section
+      pushCurrent();
+      const level = m[1].length;
+      const title = m[2].trim();
+      current = { title: `${sourceName}: ${'#'.repeat(level)} ${title}`, body: [] };
+    } else {
+      current.body.push(line);
+    }
+  }
+  pushCurrent();
+  // Filter out empty sections
+  return sections.filter(s => s.text && s.text.replace(/\s+/g, '').length > 0);
+}
+
+// ----------- TOKENIZE / SCORING -----------
+const STOP = new Set([
+  'the','and','or','a','an','of','to','for','in','on','at','is','are','be','with','by','it','we','you','our','from','as','that'
+]);
+
+function tokenize(s) {
+  return (s.toLowerCase().match(/[a-z0-9]+/g) || []).filter(w => !STOP.has(w));
+}
+
+function scoreSection(query, section) {
+  // Simple, effective heuristics:
+  //  - keyword overlap
+  //  - small boost if the title contains a query word
+  //  - small penalty for very long sections
+  const q = tokenize(query);
+  const t = tokenize(section.text);
+  if (q.length === 0 || t.length === 0) return 0;
+
+  let overlap = 0;
+  const tSet = new Set(t);
+  for (const w of q) if (tSet.has(w)) overlap++;
+
+  let titleBoost = 0;
+  const titleTokens = tokenize(section.title);
+  const titleSet = new Set(titleTokens);
+  for (const w of q) if (titleSet.has(w)) { titleBoost += 0.5; }
+
+  const lenPenalty = Math.max(0, (t.length - 1200) / 1200); // penalize very long sections
+
+  return overlap + titleBoost - lenPenalty;
+}
+
+function selectTopSections(query, allSections, maxSections = 3, maxCharsTotal = 15000) {
+  const scored = allSections
+    .map(s => ({ s, score: scoreSection(query, s) }))
+    .filter(x => x.score > 0)
+    .sort((a,b) => b.score - a.score);
+
+  const picked = [];
+  let charCount = 0;
+  for (const x of scored) {
+    const chunk = `### ${x.s.title}\n${x.s.text}`.trim();
+    if (charCount + chunk.length > maxCharsTotal) continue;
+    picked.push(chunk);
+    charCount += chunk.length;
+    if (picked.length >= maxSections) break;
+  }
+  return picked;
+}
+
+// ----------- PROMPTS -----------
 const SYSTEM_PROMPT = `
 You are the CLC Chatbot for Christ Lutheran Church (Eden Prairie, MN).
 
 MISSION & SCOPE (STRICT)
-• Logistics (service times, location/parking, staff, ministries, events): ONLY use christlutheran.com content and the provided “Context.”
-• Theology/ethics/doctrine: ONLY use WELS materials (wels.net) and Wisconsin Lutheran Seminary essays (wisluthsem.org), or clearly marked doctrine in the provided “Context.”
+• Logistics (service times, location/parking, staff, ministries, events): ONLY use christlutheran.com content and the provided “Selected Context.”
+• Theology/ethics/doctrine: ONLY use WELS materials (wels.net) and Wisconsin Lutheran Seminary essays (wisluthsem.org), or clearly marked doctrine in the provided “Selected Context.”
 • If the answer is not clearly supported by those sources, use the exact refusal line provided by the developer.
 
 TONE & PASTORAL CARE
 • Warm, welcoming, and kind. Plain language. Assume good intent.
-• Default to concise 2–4 sentence answers. Offer: “I can share more details if you’d like.”
-• For sensitive topics, be gentle and invite pastoral follow-up.
+• Default to concise 2–4 sentence answers. If appropriate, you may write a longer, thoughtful paragraph or a short bulleted list.
+• Offer: “I can share more details if you’d like.” For sensitive topics, invite pastoral follow-up.
 
 OPERATIONAL GUARDRAILS
 • Never browse or rely on outside sources. Don’t invent details or summarize from memory.
@@ -49,7 +134,7 @@ OPERATIONAL GUARDRAILS
 • Vendor solicitations: “Thanks for reaching out, we’re not seeking new professional services right now.”
 
 FOOTER (always append):
-"(Generated by ChatGPT; may contain occasional errors. For confirmation or pastoral care, please contact Christ Lutheran Church via christlutheran.com or click on the "Talk to a Human" button.)"
+"(Generated by ChatGPT; may contain occasional errors. For confirmation or pastoral care, please contact Christ Lutheran Church via christlutheran.com.)"
 `.trim();
 
 const STYLE_GUIDE = `
@@ -74,34 +159,27 @@ Example A: Yes! Sunday School meets at 10:35 AM following worship during the sch
   }
 ];
 
+// ----------- HANDLER -----------
 module.exports = async function handler(req, res) {
-  // GET = health/version check (also shows KB status)
+  // Health check
   if (req.method === 'GET') {
-    const info = await loadInfo();
-    const theo = await loadTheo();
+    const kb = await loadKB();
+    const sizes = Object.fromEntries(kb.map(k => [k.name, k.text.length]));
     return res.status(200).json({
       ok: true,
       version: VERSION,
       hasKey: Boolean(process.env.OPENAI_API_KEY),
-      hasInfoKB: Boolean(info),
-      hasTheoKB: Boolean(theo),
-      infoBytes: info ? info.length : 0,
-      theoBytes: theo ? theo.length : 0,
+      files: kb.map(k => k.name),
+      sizes,
       node: process.version
     });
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  // Robust JSON body parsing
+  // Parse JSON body
   let raw = '';
-  await new Promise((resolve) => {
-    req.on('data', (c) => (raw += c));
-    req.on('end', resolve);
-  });
-
+  await new Promise((resolve) => { req.on('data', c => (raw += c)); req.on('end', resolve); });
   let text = '';
   try {
     const json = raw ? JSON.parse(raw) : (req.body || {});
@@ -111,35 +189,24 @@ module.exports = async function handler(req, res) {
   }
   if (!text) return res.status(400).json({ error: 'Missing text', version: VERSION });
 
-  // Load KBs
-  const info = await loadInfo();
-  const theo = await loadTheo();
+  // Load & split KB sections across all files
+  const kb = await loadKB();
+  const allSections = kb.flatMap(k => splitMarkdownIntoSections(k.text, k.name));
 
-  // Build messages with both KBs (logistics first, then theology)
-  const contextBlocks = [];
-  if (info) {
-    contextBlocks.push(
-      "CONTEXT A — Congregation info (from data/ClcInfo.md):\n" + info
-    );
-  }
-  if (theo) {
-    contextBlocks.push(
-      "CONTEXT B — Theology summaries (from data/Theology.md — WELS-aligned):\n" + theo
-    );
-  }
+  // Select only the most relevant sections
+  const picked = selectTopSections(text, allSections, /*maxSections*/ 3, /*maxCharsTotal*/ 15000);
+  const selectedContext =
+    picked.length
+      ? `SELECTED CONTEXT (top ${picked.length} sections):\n\n${picked.join('\n\n---\n\n')}`
+      : `SELECTED CONTEXT: (none matched closely)`;
 
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
-    ...(contextBlocks.length ? [{
-      role: 'system',
-      content:
-        contextBlocks.join("\n\n---\n\n") +
-        "\n\nUse ONLY these contexts for logistics and doctrine. If the contexts do not contain the answer, use the refusal line."
-    }] : []),
     { role: 'system', content: STYLE_GUIDE },
     ...FEW_SHOT,
     { role: 'system', content: `Use this exact refusal line when needed:\n${REFUSAL_LINE}` },
     { role: 'system', content: 'If sources/context are insufficient, use the refusal line verbatim. Do not improvise.' },
+    { role: 'system', content: selectedContext },
     { role: 'user', content: text }
   ];
 
@@ -156,7 +223,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.25,
+        temperature: 0.35, // a touch more freedom for nuanced answers
         messages
       })
     });
@@ -178,20 +245,17 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to parse OpenAI JSON', body: textBody.slice(0, 1200), version: VERSION });
     }
 
-    const reply =
-      data?.choices?.[0]?.message?.content?.trim() ||
-      REFUSAL_LINE;
-
+    const reply = data?.choices?.[0]?.message?.content?.trim() || REFUSAL_LINE;
     const handoff = new RegExp(REFUSAL_LINE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(reply);
 
     return res.status(200).json({
       reply,
       handoff,
       version: VERSION,
-      usedInfoKB: Boolean(info),
-      usedTheoKB: Boolean(theo)
+      contextSectionsUsed: picked.length
     });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', details: String(e), version: VERSION });
   }
 };
+
