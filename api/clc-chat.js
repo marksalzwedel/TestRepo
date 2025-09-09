@@ -1,57 +1,62 @@
-// api/clc-chat.js — CLC Chatbot with section-selector mini-RAG across multiple MD files
+// api/clc-chat.js — CLC Chatbot with auto-discovered Markdown KB (section-selector mini-RAG)
 // Runtime: Node (Vercel root functions)
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v3-selector';
+const VERSION = 'kb-v4-autoload';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
-// Add more files here any time:
-const KB_FILES = [
-  { name: 'ClcInfo', p: path.join(process.cwd(), 'data', 'ClcInfo.md') },
-  { name: 'Theology', p: path.join(process.cwd(), 'data', 'Theology.md') },
-  { name: 'Marriage', p: path.join(process.cwd(), 'data', 'Marriage.md') },
-  // { name: 'AnotherDoc', p: path.join(process.cwd(), 'data', 'AnotherDoc.md') },
-];
+// ---------- AUTO-LOAD all .md files from /data ----------
+const DATA_DIR = path.join(process.cwd(), 'data');
 
-// ----------- UTIL: load all files & cache -----------
 let KB_CACHE = null; // [{ name, text }]
 async function loadKB() {
   if (KB_CACHE) return KB_CACHE;
-  const out = [];
-  for (const f of KB_FILES) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(DATA_DIR, { withFileTypes: true });
+  } catch {
+    KB_CACHE = [];
+    return KB_CACHE;
+  }
+
+  const mdFiles = entries
+    .filter(e => e.isFile() && /\.md$/i.test(e.name) && !e.name.startsWith('.'))
+    .map(e => e.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const loaded = [];
+  for (const fname of mdFiles) {
     try {
-      const raw = await fs.readFile(f.p, 'utf8');
-      out.push({ name: f.name, text: raw });
+      const text = await fs.readFile(path.join(DATA_DIR, fname), 'utf8');
+      const name = fname.replace(/\.md$/i, ''); // e.g., "Theology"
+      loaded.push({ name, text });
     } catch {
-      // Missing file is OK; we just skip it
+      // skip unreadable files
     }
   }
-  KB_CACHE = out;
+  KB_CACHE = loaded;
   return KB_CACHE;
 }
 
-// ----------- SECTION SPLITTER -----------
+// ---------- Split Markdown into sections by headings ----------
 function splitMarkdownIntoSections(md, sourceName) {
-  // Split on headings; keep the heading line with the section
   const lines = md.split(/\r?\n/);
   const sections = [];
   let current = { title: `${sourceName}: (intro)`, body: [] };
 
   function pushCurrent() {
     if (current && current.body.length) {
-      sections.push({
-        source: sourceName,
-        title: current.title,
-        text: current.body.join('\n').trim()
-      });
+      const text = current.body.join('\n').trim();
+      if (text && text.replace(/\s+/g, '').length > 0) {
+        sections.push({ source: sourceName, title: current.title, text });
+      }
     }
   }
 
   for (const line of lines) {
     const m = line.match(/^(#{1,6})\s+(.+?)\s*$/);
     if (m) {
-      // New heading starts a new section
       pushCurrent();
       const level = m[1].length;
       const title = m[2].trim();
@@ -61,13 +66,13 @@ function splitMarkdownIntoSections(md, sourceName) {
     }
   }
   pushCurrent();
-  // Filter out empty sections
-  return sections.filter(s => s.text && s.text.replace(/\s+/g, '').length > 0);
+  return sections;
 }
 
-// ----------- TOKENIZE / SCORING -----------
+// ---------- Selector scoring (no DB) ----------
 const STOP = new Set([
-  'the','and','or','a','an','of','to','for','in','on','at','is','are','be','with','by','it','we','you','our','from','as','that'
+  'the','and','or','a','an','of','to','for','in','on','at','is','are','be',
+  'with','by','it','we','you','our','from','as','that','this','these','those'
 ]);
 
 function tokenize(s) {
@@ -75,25 +80,18 @@ function tokenize(s) {
 }
 
 function scoreSection(query, section) {
-  // Simple, effective heuristics:
-  //  - keyword overlap
-  //  - small boost if the title contains a query word
-  //  - small penalty for very long sections
-  const q = tokenize(query);
-  const t = tokenize(section.text);
-  if (q.length === 0 || t.length === 0) return 0;
+  const q = tokenize(query), t = tokenize(section.text);
+  if (!q.length || !t.length) return 0;
 
   let overlap = 0;
   const tSet = new Set(t);
   for (const w of q) if (tSet.has(w)) overlap++;
 
   let titleBoost = 0;
-  const titleTokens = tokenize(section.title);
-  const titleSet = new Set(titleTokens);
-  for (const w of q) if (titleSet.has(w)) { titleBoost += 0.5; }
+  const titleSet = new Set(tokenize(section.title));
+  for (const w of q) if (titleSet.has(w)) titleBoost += 0.5;
 
-  const lenPenalty = Math.max(0, (t.length - 1200) / 1200); // penalize very long sections
-
+  const lenPenalty = Math.max(0, (t.length - 1200) / 1200); // penalize very long chunks
   return overlap + titleBoost - lenPenalty;
 }
 
@@ -101,7 +99,7 @@ function selectTopSections(query, allSections, maxSections = 3, maxCharsTotal = 
   const scored = allSections
     .map(s => ({ s, score: scoreSection(query, s) }))
     .filter(x => x.score > 0)
-    .sort((a,b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score);
 
   const picked = [];
   let charCount = 0;
@@ -115,7 +113,7 @@ function selectTopSections(query, allSections, maxSections = 3, maxCharsTotal = 
   return picked;
 }
 
-// ----------- PROMPTS -----------
+// ---------- Prompts (warm tone, strict scope) ----------
 const SYSTEM_PROMPT = `
 You are the CLC Chatbot for Christ Lutheran Church (Eden Prairie, MN).
 
@@ -160,9 +158,9 @@ Example A: Yes! Sunday School meets at 10:35 AM following worship during the sch
   }
 ];
 
-// ----------- HANDLER -----------
+// ---------- HTTP handler ----------
 module.exports = async function handler(req, res) {
-  // Health check
+  // GET health/version + file list
   if (req.method === 'GET') {
     const kb = await loadKB();
     const sizes = Object.fromEntries(kb.map(k => [k.name, k.text.length]));
@@ -180,7 +178,7 @@ module.exports = async function handler(req, res) {
 
   // Parse JSON body
   let raw = '';
-  await new Promise((resolve) => { req.on('data', c => (raw += c)); req.on('end', resolve); });
+  await new Promise(resolve => { req.on('data', c => (raw += c)); req.on('end', resolve); });
   let text = '';
   try {
     const json = raw ? JSON.parse(raw) : (req.body || {});
@@ -190,16 +188,17 @@ module.exports = async function handler(req, res) {
   }
   if (!text) return res.status(400).json({ error: 'Missing text', version: VERSION });
 
-  // Load & split KB sections across all files
+  // Load KB and split into sections (across ALL .md files)
   const kb = await loadKB();
   const allSections = kb.flatMap(k => splitMarkdownIntoSections(k.text, k.name));
 
-  // Select only the most relevant sections
+  // Select the most relevant sections
   const picked = selectTopSections(text, allSections, /*maxSections*/ 3, /*maxCharsTotal*/ 15000);
-  const selectedContext =
-    picked.length
-      ? `SELECTED CONTEXT (top ${picked.length} sections):\n\n${picked.join('\n\n---\n\n')}`
-      : `SELECTED CONTEXT: (none matched closely)`;
+  const pickedTitles = picked.map(s => s.split('\n')[0].replace(/^###\s*/, ''));
+
+  const selectedContext = picked.length
+    ? `SELECTED CONTEXT (top ${picked.length} sections):\n\n${picked.join('\n\n---\n\n')}`
+    : `SELECTED CONTEXT: (none matched closely)`;
 
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -224,7 +223,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.35, // a touch more freedom for nuanced answers
+        temperature: 0.35,
         messages
       })
     });
@@ -253,10 +252,10 @@ module.exports = async function handler(req, res) {
       reply,
       handoff,
       version: VERSION,
-      contextSectionsUsed: picked.length
+      contextSectionsUsed: picked.length,
+      pickedTitles
     });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', details: String(e), version: VERSION });
   }
 };
-
