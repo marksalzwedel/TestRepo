@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p2';
+const VERSION = 'kb-v7-deepdive-p3';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -414,7 +414,8 @@ module.exports = async function handler(req, res) {
     const handoff = new RegExp(REFUSAL_LINE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i').test(reply);
 
     // Suggest deep dive when appropriate (phase 1 UX hint for your client)
-    const offerDeepDive = !deepDive && isTheologyQuestion(text);
+    // NEW: offer deep dive for theology OR civic questions
+    const offerDeepDive = !deepDive && (isTheologyQuestion(text) || isCivicQuestion(text));
 
     return res.status(200).json({
       reply,
