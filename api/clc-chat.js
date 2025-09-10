@@ -1,9 +1,9 @@
-// api/clc-chat.js — Autoloaded MD + selector + allow-listed search & fetch tools (+ deep dive)
+// api/clc-chat.js — Autoloaded MD + selector + allow-listed search/fetch (parallel, fast) + deep dive
 // Runtime: Node (Vercel root functions)
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v6-search-tools';
+const VERSION = 'kb-v6b-search-fast';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -127,10 +127,10 @@ function stripHtml(html){
   text = text.replace(/\s+/g,' ').trim();
   return text;
 }
-async function fetchApproved(url){
+async function fetchApproved(url, timeoutMs=5000){
   if (!allowedUrl(url)) return { ok:false, error:'URL not allowed', url };
   const controller = new AbortController();
-  const t = setTimeout(()=>controller.abort(), 8000);
+  const t = setTimeout(()=>controller.abort(), timeoutMs);
   try{
     const r = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'CLC-Chatbot/1.0' } });
     clearTimeout(t);
@@ -144,7 +144,7 @@ async function fetchApproved(url){
   }
 }
 
-// ---------- Allow-listed search tool (basic site ?s=term search) ----------
+// ---------- Allow-listed search tool (parallel, short timeouts) ----------
 const SEARCH_ENDPOINTS = [
   { name: 'wels', base: 'https://wels.net', q: (term) => `https://wels.net/?s=${encodeURIComponent(term)}` },
   { name: 'wisluthsem', base: 'https://www.wisluthsem.org', q: (term) => `https://www.wisluthsem.org/?s=${encodeURIComponent(term)}` },
@@ -164,29 +164,32 @@ function extractLinks(html, base) {
   }
   return [...new Set(links)];
 }
-async function searchApproved(query) {
-  const out = [];
-  for (const ep of SEARCH_ENDPOINTS) {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 8000);
-    try {
-      const r = await fetch(ep.q(query), { signal: controller.signal, headers: { 'User-Agent': 'CLC-Chatbot/1.0' } });
-      clearTimeout(t);
-      if (!r.ok) continue;
-      const html = await r.text();
-      const links = extractLinks(html, ep.base);
-      if (links.length) out.push({ site: ep.name, base: ep.base, links });
-    } catch {
-      clearTimeout(t);
-    }
+async function searchOne(ep, query, timeoutMs=4000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(ep.q(query), { signal: controller.signal, headers: { 'User-Agent': 'CLC-Chatbot/1.0' } });
+    clearTimeout(t);
+    if (!r.ok) return { site: ep.name, base: ep.base, links: [] };
+    const html = await r.text();
+    const links = extractLinks(html, ep.base);
+    return { site: ep.name, base: ep.base, links };
+  } catch {
+    clearTimeout(t);
+    return { site: ep.name, base: ep.base, links: [] };
   }
-  return { ok: true, query, results: out };
+}
+async function searchApproved(query) {
+  const results = await Promise.all(SEARCH_ENDPOINTS.map(ep => searchOne(ep, query)));
+  // Only keep the top few links per site to avoid bloat
+  const trimmed = results.map(r => ({ site:r.site, base:r.base, links: r.links.slice(0,5) }));
+  return { ok: true, query, results: trimmed };
 }
 
-// ---------- Deep-dive detector ----------
+// ---------- Deep-dive detector (wider trigger: “summarize … from WELS”) ----------
 function wantsDeepDive(q) {
   const s = q.toLowerCase();
-  return /\b(deep dive|take your time|very thorough|research this|go deeper|dig deeper)\b/.test(s);
+  return /\b(deep dive|take your time|very thorough|research this|go deeper|dig deeper|summarize (?:wels|wisluthsem|wisconsin lutheran seminary))/i.test(s);
 }
 
 // ---------- Prompts (warm tone, strict scope) ----------
@@ -196,7 +199,7 @@ You are the CLC Chatbot for Christ Lutheran Church (Eden Prairie, MN).
 MISSION & SCOPE (STRICT)
 • Logistics (service times, location/parking, staff, ministries, events): ONLY use christlutheran.com content and the provided “Selected Context.”
 • Theology/ethics/doctrine: ONLY use WELS materials (wels.net) and Wisconsin Lutheran Seminary essays (wisluthsem.org), or clearly marked doctrine in the provided “Selected Context.”
-• You may call the provided tools ONLY for these domains (wels.net, wisluthsem.org, christlutheran.com). Use search to find candidate pages, then fetch 1–2 of them as needed.
+• You may call the provided tools ONLY for these domains (wels.net, wisluthsem.org, christlutheran.com). Prefer searchApproved first to find candidate pages; then fetchApproved 1–2 of them.
 • Do not browse elsewhere or follow links automatically.
 • If the answer is not clearly supported by those sources, use the exact refusal line provided by the developer.
 
@@ -238,7 +241,10 @@ Example A: Happy to help! Our Sunday worship is at 9:30 AM. We’re at 16900 Mai
 Example A: Yes! Sunday School meets at 10:35 AM following worship during the school year. If you’re bringing kids, I can share check-in details.` },
   { role: 'system', content:
 `Example Q: Should Christians support <Candidate>?
-Example A: Thanks for asking—this matters. Scripture urges us to pray for and respect leaders (1 Tim 2:1–2; Rom 13), to uphold what is right and protect life, and to act with love for our neighbors. WELS doesn’t endorse candidates; Christians use their freedom to weigh both character and policies against God’s moral will. After prayer and study, act with a clear conscience—and if you’d like to talk it through, I can connect you with our pastor.` }
+Example A: Thanks for asking—this matters. Scripture urges us to pray for and respect leaders (1 Tim 2:1–2; Rom 13), to uphold what is right and protect life, and to act with love for our neighbors. WELS doesn’t endorse candidates; Christians use their freedom to weigh both character and policies against God’s moral will. After prayer and study, act with a clear conscience—and if you’d like to talk it through, I can connect you with our pastor.` },
+  { role: 'system', content:
+`Example Q: Deep dive: summarize WELS pages about justification.
+Example A: Let me gather the WELS sources first. (searchApproved with "justification site:wels.net") Then I’ll open one or two key pages (fetchApproved) and summarize what they teach: that God justifies sinners for Christ’s sake, received by faith apart from works, the heart of the gospel. I can share links if you’d like more.` }
 ];
 
 // ---------- HTTP handler ----------
@@ -357,7 +363,7 @@ module.exports = async function handler(req, res) {
           if (fname === 'searchApproved') {
             result = await searchApproved(String(args.query || ''));
           } else if (fname === 'fetchApproved') {
-            result = await fetchApproved(String(args.url || ''));
+            result = await fetchApproved(String(args.url || ''), /*timeoutMs*/ 5000);
           } else {
             result = { ok:false, error:'Unknown tool' };
           }
