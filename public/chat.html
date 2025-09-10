@@ -28,6 +28,9 @@
       margin-top: .5rem; padding: .4rem .8rem; border: 1px solid #444; border-radius: 6px;
       background: #0d6efd; color: #fff; font-weight: 600; cursor: pointer;
     }
+    /* Deep-dive offer styling */
+    .deep-dive-offer { margin: 8px 0 4px; padding: 8px; border: 1px dashed #bbb; border-radius: 8px; background: #fafafa; }
+    .deep-dive-offer button { padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -43,6 +46,7 @@
     <button type="submit">Send</button>
   </form>
 
+  <!-- Main chat logic -->
   <script>
     const log = document.getElementById('log');
     const form = document.getElementById('chat-form');
@@ -72,135 +76,117 @@
           window.HubSpotConversations.widget.open();
         } else {
           window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-          window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
+          window.hsConversationsOnReady.push(() =>
+            window.HubSpotConversations?.widget?.open?.()
+          );
           setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
         }
       });
       log.scrollTop = log.scrollHeight;
     }
 
-<script>
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const text = input.value.trim();
-  if (!text) return;
+    // Submit handler with deep-dive support
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
 
-  // show user message
-  add('user', text);
-  input.value = '';
+      add('user', text);
+      input.value = '';
 
-  try {
-    const r = await fetch('/api/clc-chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      try {
+        const r = await fetch('/api/clc-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+
+        const raw = await r.text();
+        let data;
+        try { data = JSON.parse(raw); }
+        catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
+
+        add('assistant', data.reply || '(no reply)');
+        if (data.handoff) showHandoffBanner?.();
+
+        // Offer deep dive button if available
+        if (data.offerDeepDive && data.deepDiveHint) {
+          const wrap = document.createElement('div');
+          wrap.className = 'deep-dive-offer';
+
+          const hint = document.createElement('div');
+          hint.textContent = data.deepDiveHint;
+          hint.style.fontSize = '0.9rem';
+          hint.style.opacity = '0.85';
+          hint.style.marginBottom = '6px';
+
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Dig deeper';
+          btn.onclick = async () => {
+            btn.disabled = true;
+            btn.textContent = 'Researching…';
+            try {
+              const r2 = await fetch('/api/clc-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, deepDive: true })
+              });
+              const raw2 = await r2.text();
+              let data2;
+              try { data2 = JSON.parse(raw2); }
+              catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
+              add('assistant', data2.reply || '(no reply)');
+            } catch (err) {
+              add('assistant', 'Sorry—there was an error during the deep dive.');
+              console.error(err);
+            } finally {
+              wrap.remove();
+            }
+          };
+
+          wrap.appendChild(hint);
+          wrap.appendChild(btn);
+          log.appendChild(wrap);
+          log.scrollTop = log.scrollHeight;
+        }
+
+      } catch (err) {
+        add('assistant', 'Sorry—there was an error contacting the server.');
+        console.error(err);
+      }
     });
 
-    // Parse (fall back to friendly error)
-    const raw = await r.text();
-    let data;
-    try { data = JSON.parse(raw); }
-    catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
-
-    // show assistant reply
-    add('assistant', data.reply || '(no reply)');
-
-    // show live-chat banner if needed
-    if (data.handoff) showHandoffBanner?.();
-
-    // --- NEW: offer deep dive button when available ---
-    if (data.offerDeepDive && data.deepDiveHint) {
-      const wrap = document.createElement('div');
-      wrap.className = 'deep-dive-offer';
-      wrap.style.margin = '8px 0 4px';
-
-      const hint = document.createElement('div');
-      hint.textContent = data.deepDiveHint;
-      hint.style.fontSize = '0.9rem';
-      hint.style.opacity = '0.8';
-      hint.style.marginBottom = '6px';
-
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'deep-dive-btn';
-      btn.textContent = 'Dig deeper';
-      btn.style.padding = '6px 10px';
-      btn.style.borderRadius = '8px';
-      btn.style.border = '1px solid #ddd';
-      btn.style.cursor = 'pointer';
-
-      btn.onclick = async () => {
-        btn.disabled = true;
-        btn.textContent = 'Researching…';
-        try {
-          const r2 = await fetch('/api/clc-chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, deepDive: true })
-          });
-          const raw2 = await r2.text();
-          let data2;
-          try { data2 = JSON.parse(raw2); }
-          catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
-
-          add('assistant', data2.reply || '(no reply)');
-        } catch (err) {
-          add('assistant', 'Sorry—there was an error during the deep dive.');
-          console.error(err);
-        } finally {
-          wrap.remove();
-        }
-      };
-
-      wrap.appendChild(hint);
-      wrap.appendChild(btn);
-      log.appendChild(wrap); // <<--- use your log element
-      log.scrollTop = log.scrollHeight;
+    // HubSpot launcher logic (kept outside of log)
+    function enableTalkButton() {
+      if (window.HubSpotConversations?.widget?.open) {
+        talkBtn.disabled = false;
+        talkBtn.title = '';
+      } else {
+        talkBtn.disabled = true;
+        talkBtn.title = 'Loading chat…';
+      }
     }
-    // --- end NEW ---
 
-  } catch (err) {
-    add('assistant', 'Sorry—there was an error contacting the server.');
-    console.error(err);
-  }
-});
-</script>
+    talkBtn.addEventListener('click', () => {
+      if (window.HubSpotConversations?.widget?.open) {
+        window.HubSpotConversations.widget.open();
+      } else {
+        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+        window.hsConversationsOnReady.push(() =>
+          window.HubSpotConversations?.widget?.open?.()
+        );
+        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+      }
+    });
 
-<script>
-  function enableTalkButton() {
-    if (window.HubSpotConversations?.widget?.open) {
-      talkBtn.disabled = false;
-      talkBtn.title = '';
-    } else {
-      talkBtn.disabled = true;
-      talkBtn.title = 'Loading chat…';
-    }
-  }
-
-  talkBtn.addEventListener('click', () => {
-    if (window.HubSpotConversations?.widget?.open) {
-      window.HubSpotConversations.widget.open();
-    } else {
-      window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-      window.hsConversationsOnReady.push(() =>
-        window.HubSpotConversations?.widget?.open?.()
-      );
-      setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-    }
-  });
-
-  // initialize + re-enable once HubSpot loads
-  enableTalkButton();
-  window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-  window.hsConversationsOnReady.push(enableTalkButton);
-</script>
-
+    // initialize + re-enable once HubSpot loads
     enableTalkButton();
     window.hsConversationsOnReady = window.hsConversationsOnReady || [];
     window.hsConversationsOnReady.push(enableTalkButton);
   </script>
 
-  <!-- Replace YOUR_PORTAL_ID with your numeric HubSpot portal ID; or remove this line if you don’t want HubSpot on this test page -->
+  <!-- HubSpot loader: replace with your actual portal ID if different -->
   <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
 </body>
 </html>
