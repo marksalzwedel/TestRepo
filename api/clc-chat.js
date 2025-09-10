@@ -3,7 +3,13 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p7';
+const VERSION = 'kb-v7-deepdive-p8';
+
+// Model choices (override in Vercel env if you like)
+const MODEL_STANDARD = process.env.OPENAI_MODEL_STANDARD || 'gpt-4o-mini'; // fast, cheap
+const MODEL_DEEP     = process.env.OPENAI_MODEL_DEEP     || 'gpt-4o';      // higher quality
+
+
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -301,6 +307,8 @@ module.exports = async function handler(req, res) {
 
   // Model limits
   const MAX_TOOL_CALLS = deepDive ? 6 : 2;
+  // Choose model per request
+  const SELECTED_MODEL = deepDive ? MODEL_DEEP : MODEL_STANDARD;
   const MODEL_TEMPERATURE = deepDive ? 0.30 : 0.36;
 
   // Load KB and sections
@@ -379,7 +387,7 @@ module.exports = async function handler(req, res) {
     
     // 2) Build the payload object instead of inlining
     const payload = {
-      model: OPENAI_MODEL || 'gpt-4o-mini',
+      model:  SELECTED_MODEL,
       temperature: MODEL_TEMPERATURE,
       messages: baseMessages,
       ...(typeof tools !== 'undefined' ? { tools } : {})
