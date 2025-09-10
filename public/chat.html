@@ -39,7 +39,7 @@
   <div id="log" aria-live="polite"></div>
 
   <form id="chat-form" autocomplete="off">
-    <input id="text" type="text" placeholder="Hi! Ask about service times, location, or a WELS topic…" />
+    <input id="text" type="text" placeholder="Hi! Ask about service times, location, or a Bible question." />
     <button type="submit">Send</button>
   </form>
 
@@ -79,29 +79,94 @@
       log.scrollTop = log.scrollHeight;
     }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      add('user', text);
-      input.value = '';
-      try {
-        const r = await fetch('/api/clc-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-        // Try to parse as JSON, but show a friendly message if it isn't
-        const raw = await r.text();
-        let data;
-        try { data = JSON.parse(raw); } catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
-        add('assistant', data.reply || '(no reply)');
-        if (data.handoff) showHandoffBanner();
-      } catch (err) {
-        add('assistant', 'Sorry—there was an error contacting the server.');
-        console.error(err);
-      }
+<script>
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+
+  // show user message
+  add('user', text);
+  input.value = '';
+
+  try {
+    const r = await fetch('/api/clc-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
     });
+
+    // Parse (fall back to friendly error)
+    const raw = await r.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
+
+    // show assistant reply
+    add('assistant', data.reply || '(no reply)');
+
+    // show live-chat banner if needed
+    if (data.handoff) showHandoffBanner?.();
+
+    // --- NEW: offer deep dive button when available ---
+    if (data.offerDeepDive && data.deepDiveHint) {
+      const wrap = document.createElement('div');
+      wrap.className = 'deep-dive-offer';
+      wrap.style.margin = '8px 0 4px';
+
+      const hint = document.createElement('div');
+      hint.textContent = data.deepDiveHint;
+      hint.style.fontSize = '0.9rem';
+      hint.style.opacity = '0.8';
+      hint.style.marginBottom = '6px';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'deep-dive-btn';
+      btn.textContent = 'Dig deeper';
+      btn.style.padding = '6px 10px';
+      btn.style.borderRadius = '8px';
+      btn.style.border = '1px solid #ddd';
+      btn.style.cursor = 'pointer';
+
+      btn.onclick = async () => {
+        btn.disabled = true;
+        btn.textContent = 'Researching…';
+        try {
+          const r2 = await fetch('/api/clc-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, deepDive: true })
+          });
+          const raw2 = await r2.text();
+          let data2;
+          try { data2 = JSON.parse(raw2); }
+          catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
+
+          add('assistant', data2.reply || '(no reply)');
+        } catch (err) {
+          add('assistant', 'Sorry—there was an error during the deep dive.');
+          console.error(err);
+        } finally {
+          wrap.remove();
+        }
+      };
+
+      wrap.appendChild(hint);
+      wrap.appendChild(btn);
+      log.appendChild(wrap); // <<--- use your log element
+      log.scrollTop = log.scrollHeight;
+    }
+    // --- end NEW ---
+
+  } catch (err) {
+    add('assistant', 'Sorry—there was an error contacting the server.');
+    console.error(err);
+  }
+});
+</script>
+
+
 
     function enableTalkButton() {
       if (window.HubSpotConversations?.widget?.open) {
@@ -125,6 +190,6 @@
   </script>
 
   <!-- Replace YOUR_PORTAL_ID with your numeric HubSpot portal ID; or remove this line if you don’t want HubSpot on this test page -->
-  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/YOUR_PORTAL_ID.js"></script>
+  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
 </body>
 </html>
