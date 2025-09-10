@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p3';
+const VERSION = 'kb-v7-deepdive-p4';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -241,6 +241,7 @@ Deep-dive mode (theological topics):
 • Then provide 3–6 brief, numbered points that synthesize doctrine and pastoral application.
 • Conclude with a short “discernment” or “next steps” checklist (3–5 bullets).
 • Stay non-partisan; avoid speculation; ground everything in the provided context and tool results.
+• Always finish with a “Sources consulted” footer listing WELS/WLS page titles or section headings used (no raw URLs).
 `.trim();
 
 const FEW_SHOT = [
@@ -323,6 +324,7 @@ module.exports = async function handler(req, res) {
     { role:'system', content:selectedContext },
     { role: 'system', content: PRINCIPLES_GUIDE },
     { role: 'system', content: CIVIC_COMPOSE_TEMPLATE },
+    ...(deepDive ? [{ role:'system', content: 'In deep-dive mode, always conclude with a short "Sources consulted" footer listing the WELS/WLS page titles or section headings you used (no raw URLs).' }] : []),
     { role:'user', content:text }
   ];
 
