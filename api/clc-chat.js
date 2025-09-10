@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p4';
+const VERSION = 'kb-v7-deepdive-p6';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -244,6 +244,14 @@ Deep-dive mode (theological topics):
 • Always finish with a “Sources consulted” footer listing WELS/WLS page titles or section headings used (no raw URLs).
 `.trim();
 
+const FORCE_TOOL_RULE = `
+Deep-dive for theology or civic:
+• First call searchApproved with a concise 2–5 word query.
+• Then call fetchApproved on at least one promising WELS/WLS result.
+• Only skip this if the Selected Context already contains a direct, citable doctrinal section.
+• After fetching, synthesize a fuller answer (250–450 words) and include a “Sources consulted” footer with page titles/section headings (no raw URLs).
+`.trim();
+
 const FEW_SHOT = [
   { role: 'system', content:
 `Example Q: What does WELS teach about Baptism?
@@ -293,7 +301,7 @@ module.exports = async function handler(req, res) {
 
   // Model limits
   const MAX_TOOL_CALLS = deepDive ? 6 : 2;
-  const MODEL_TEMPERATURE = deepDive ? 0.40 : 0.36;
+  const MODEL_TEMPERATURE = deepDive ? 0.30 : 0.36;
 
   // Load KB and sections
   const kb = await loadKB();
@@ -312,12 +320,15 @@ module.exports = async function handler(req, res) {
   const selectedContext = pickedArr.length
     ? `SELECTED CONTEXT (top ${pickedArr.length} sections):\n\n${pickedArr.join('\n\n---\n\n')}`
     : `SELECTED CONTEXT: (none matched closely)`;
+  
+  const isTheo = isTheologyQuestion(text);
+  const isCivic = isCivicQuestion(text);
 
   // Base messages
   const baseMessages = [
     { role:'system', content:SYSTEM_PROMPT },
     { role:'system', content:STYLE_GUIDE },
-    ...(deepDive ? [{ role:'system', content: DEEP_DIVE_GUIDE }] : []),
+    ...(deepDive && (isTheo || isCivic) ? [{ role: 'system', content: FORCE_TOOL_RULE }] : []),
     ...FEW_SHOT,
     { role:'system', content:`Use this exact refusal line when needed:\n${REFUSAL_LINE}` },
     { role:'system', content:'If sources/context are insufficient, use the refusal line verbatim. Do not improvise.' },
