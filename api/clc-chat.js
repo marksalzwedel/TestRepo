@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p6';
+const VERSION = 'kb-v7-deepdive-p7';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -373,11 +373,33 @@ module.exports = async function handler(req, res) {
 
   // OpenAI call with tool orchestration (+ activity log)
   async function openai(messages, toolResultsSoFar = 0, maxTools = MAX_TOOL_CALLS, toolActivity = []) {
+    // 1) Decide if this is theology/civic (we’ll use these flags below)
+    const isTheo  = isTheologyQuestion(text);
+    const isCivic = isCivicQuestion(text);
+    
+    // 2) Build the payload object instead of inlining
+    const payload = {
+      model: OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: MODEL_TEMPERATURE,
+      messages: baseMessages,
+      ...(typeof tools !== 'undefined' ? { tools } : {})
+    };
+    
+    // 3) Force tool usage in deep-dive for theology/civic
+    if (deepDive && (isTheo || isCivic)) {
+      payload.tool_choice = 'required'; // <- THIS is the key line
+    }
+    
+    // 4) Send the request using the payload
     const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:'POST',
-      headers:{ Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type':'application/json' },
-      body: JSON.stringify({ model:'gpt-4o-mini', temperature: MODEL_TEMPERATURE, messages, tools, tool_choice:'auto' })
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
+
     const bodyText = await aiRes.text();
     if (!aiRes.ok) {
       return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText.slice(0,1200), toolActivity };
