@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive';
+const VERSION = 'kb-v7-deepdive-p1';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -236,8 +236,16 @@ Example A: Happy to help! Baptism is a means of grace where God gives forgivenes
 
 // ---------- HTTP handler ----------
 module.exports = async function handler(req, res) {
-  // GET health/version + file list
+// GET health/version + file list
   if (req.method === 'GET') {
+        // allow manual cache bust: /api/clc-chat?reload=1
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      if (url.searchParams.get('reload') === '1') {
+        KB_CACHE = null;
+      }
+    } catch { /* ignore */ }
+    
     const kb = await loadKB();
     const sizes = Object.fromEntries(kb.map(k => [k.name, k.text.length]));
     return res.status(200).json({
