@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const VERSION = 'kb-v7-deepdive-p1';
+const VERSION = 'kb-v7-deepdive-p2';
 const REFUSAL_LINE = 'I’m not sure how to answer that. Would you like to chat with a person?';
 
 // ---------- AUTO-LOAD all .md files from /data ----------
@@ -220,6 +220,21 @@ Style:
 • Keep sentences short; avoid jargon; use “we” and “you” where natural.
 `.trim();
 
+const PRINCIPLES_GUIDE = `
+When a question involves current events, politicians, parties, elections, or public policy, answer with principles:
+• No endorsements or oppositions.
+• Draw from Church & State and Christian Living doctrines (pray for leaders; respect authority; obey God rather than people when they conflict; love neighbor; protect life; clear conscience; Christian freedom).
+• Summarize 3–5 principles the asker can use; warm, pastoral tone.
+`.trim();
+
+const CIVIC_COMPOSE_TEMPLATE = `
+For civic/politics questions, structure the answer as:
+1) Brief pastoral preface.
+2) 3–5 numbered principles (prayer/respect; no endorsements; freedom of the Christian; weigh character + policy incl. life; charity when Christians differ).
+3) Optional short checklist (3–5 items).
+4) Gentle close + offer pastoral follow-up.
+`.trim();
+
 const DEEP_DIVE_GUIDE = `
 Deep-dive mode (theological topics):
 • Start with a one-sentence thesis that answers the question.
@@ -306,6 +321,8 @@ module.exports = async function handler(req, res) {
     { role:'system', content:`Use this exact refusal line when needed:\n${REFUSAL_LINE}` },
     { role:'system', content:'If sources/context are insufficient, use the refusal line verbatim. Do not improvise.' },
     { role:'system', content:selectedContext },
+    { role: 'system', content: PRINCIPLES_GUIDE },
+    { role: 'system', content: CIVIC_COMPOSE_TEMPLATE },
     { role:'user', content:text }
   ];
 
