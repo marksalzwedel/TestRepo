@@ -166,24 +166,35 @@ form.addEventListener('submit', async (e) => {
 });
 </script>
 
-
-
-    function enableTalkButton() {
-      if (window.HubSpotConversations?.widget?.open) {
-        talkBtn.disabled = false; talkBtn.title = '';
-      } else {
-        talkBtn.disabled = true; talkBtn.title = 'Loading chat…';
-      }
+<script>
+  function enableTalkButton() {
+    if (window.HubSpotConversations?.widget?.open) {
+      talkBtn.disabled = false;
+      talkBtn.title = '';
+    } else {
+      talkBtn.disabled = true;
+      talkBtn.title = 'Loading chat…';
     }
-    talkBtn.addEventListener('click', () => {
-      if (window.HubSpotConversations?.widget?.open) {
-        window.HubSpotConversations.widget.open();
-      } else {
-        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-        window.hsConversationsOnReady.push(() => window.HubSpotConversations?.widget?.open?.());
-        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-      }
-    });
+  }
+
+  talkBtn.addEventListener('click', () => {
+    if (window.HubSpotConversations?.widget?.open) {
+      window.HubSpotConversations.widget.open();
+    } else {
+      window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+      window.hsConversationsOnReady.push(() =>
+        window.HubSpotConversations?.widget?.open?.()
+      );
+      setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+    }
+  });
+
+  // initialize + re-enable once HubSpot loads
+  enableTalkButton();
+  window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+  window.hsConversationsOnReady.push(enableTalkButton);
+</script>
+
     enableTalkButton();
     window.hsConversationsOnReady = window.hsConversationsOnReady || [];
     window.hsConversationsOnReady.push(enableTalkButton);
