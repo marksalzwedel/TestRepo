@@ -105,10 +105,22 @@ function isCivicQuestion(q){
   const s = q.toLowerCase();
   return /\b(vote|voting|election|candidate|president|governor|mayor|senator|trump|biden|party|republican|democrat|politic|policy|platform)\b/.test(s);
 }
-function isTheologyQuestion(q){
+
+function isTheologyQuestion(q) {
   const s = q.toLowerCase();
-  return /\b(baptis|communion|eucharist|lord['’]?s supper|sacrament|justif|sanctif|atonement|trinity|triune|scripture|bible|means of grace|law and gospel|sin|grace|church|ministry|eschatology|return of jesus|heaven|hell|marriage|sexual|sanctity of life|abortion|conscience)\b/.test(s);
+  const terms = [
+    // core doctrines
+    'baptism','infant baptism','lord’s supper','lords supper','communion','eucharist',
+    'justification','sanctification','atonement','original sin','grace','faith alone',
+    'law and gospel','repentance','forgiveness','confession','absolution',
+    'scripture','bible','inerrancy','creation','evolution','trinity','triune',
+    'jesus','christ','holy spirit','sacrament','sacraments','liturgy',
+    'predestination','election','good works','means of grace', 'god', 'christian', 'lutheran', 'teaching', 'wels'
+  ];
+  return terms.some(t => s.includes(t));
 }
+
+
 function civicBoostSections(query, allSections){
   if (!isCivicQuestion(query)) return [];
   const preferred = allSections.filter(sec => /churchandstate|christianliving/i.test(sec.source || ''));
