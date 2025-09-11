@@ -475,6 +475,13 @@ module.exports = async function handler(req, res) {
         content: JSON.stringify(result)
       });
     }
+      if (deepDive) {
+    newMessages = newMessages.concat({
+      role: 'system',
+      content:
+        'Compose the final deep-dive answer now. Start with a one-sentence thesis, then 3–6 brief numbered points grounded in the fetched text and Selected Context. Cite relevant Bible passages inline where applicable (e.g., Acts 2:38; Eph 2:8–9). End with a short “Sources consulted” footer listing WELS/WLS page titles or section headings (no raw URLs). Keep a warm, pastoral tone.'
+    });
+  }
     // recurse so the model can read tool outputs and write the final answer
     return openai(newMessages, toolResultsSoFar + 1, maxTools, toolActivity);
   }
