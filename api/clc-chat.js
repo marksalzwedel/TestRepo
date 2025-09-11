@@ -466,14 +466,21 @@ module.exports = async function handler(req, res) {
             result = await searchApproved(q);
           }
 
-        } else if (fname === 'fetchApproved') {
-          // BEFORE:
-          // result = await fetchApproved(String(args.url || ''), /*timeoutMs*/ deepDive ? 6000 : 4500);
-        
-          // AFTER: give deep-dive more time, normal a bit more too
-          const url = String(args.url ?? '').trim();
-          result = await fetchApproved(url, /*timeoutMs*/ deepDive ? 15000 : 8000);
-        }
+          } else if (fname === 'fetchApproved') {
+            const url = String(args.url ?? '').trim();
+            if (!url) {
+              result = { ok: false, error: 'Missing URL for fetchApproved' };
+            } else if (!/^https:\/\/(wels\.net|www\.wisluthsem\.org|www\.christlutheran\.com)\//.test(url)) {
+              result = { ok: false, error: 'URL not on allow-list', url };
+            } else {
+              try {
+                result = await fetchApproved(url, /* timeoutMs */ deepDive ? 15000 : 8000);
+              } catch (e) {
+                result = { ok: false, error: String(e), url };
+              }
+            }
+          }
+
           toolActivity.push({ tool: fname, args, ok: !!result.ok, note: result.url || result.query || null });
           newMessages = newMessages.concat({ role:'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
         }
