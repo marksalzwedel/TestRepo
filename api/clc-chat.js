@@ -262,6 +262,14 @@ Deep-dive mode (theological topics):
 • Always finish with a “Sources consulted” footer listing WELS/WLS page titles or section headings used (no raw URLs).
 `.trim();
 
+const SCRIPTURE_CITATION_GUIDE = `
+When giving theological answers:
+• Where applicable, cite Bible passages (book, chapter:verse) that support the teaching.
+• Favor clear, classic passages (e.g., Romans 3:23–24, John 3:16, Ephesians 2:8–9).
+• Do not invent verses. Only cite passages that are directly relevant.
+• Place citations inline (e.g., "Baptism brings forgiveness (Acts 2:38)"). 
+`.trim();
+
 const FORCE_TOOL_RULE = `
 Deep-dive for theology or civic:
 • First call searchApproved with a concise 2–5 word query.
@@ -354,6 +362,7 @@ module.exports = async function handler(req, res) {
     { role:'system', content:'If sources/context are insufficient, use the refusal line verbatim. Do not improvise.' },
     { role:'system', content:selectedContext },
     { role: 'system', content: PRINCIPLES_GUIDE },
+    { role: 'system', content: SCRIPTURE_CITATION_GUIDE },
     { role: 'system', content: CIVIC_COMPOSE_TEMPLATE },
     ...(deepDive ? [{ role:'system', content: 'In deep-dive mode, always conclude with a short "Sources consulted" footer listing the WELS/WLS page titles or section headings you used (no raw URLs).' }] : []),
     { role:'user', content:text }
@@ -479,7 +488,7 @@ module.exports = async function handler(req, res) {
       deepDive,
       offerDeepDive,                                   // <— your UI can show "Dig deeper" button
       deepDiveHint: offerDeepDive
-        ? 'Would you like me to dig deeper into this topic for a more thorough answer?'
+        ? 'Would you like me to dig deeper into this topic for a more thorough answer? (It may take a minute or two)'
         : undefined,
       contextSectionsUsed: pickedArr.length,
       pickedTitles,
