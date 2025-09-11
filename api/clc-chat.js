@@ -408,97 +408,88 @@ module.exports = async function handler(req, res) {
     }
   ];
 
-  // OpenAI call with tool orchestration (+ activity log)
-  async function openai(messages, toolResultsSoFar = 0, maxTools = MAX_TOOL_CALLS, toolActivity = []) {
-    // 1) Decide if this is theology/civic (we’ll use these flags below)
-    const isTheo  = isTheologyQuestion(text);
-    const isCivic = isCivicQuestion(text);
-    
-    // 2) Build the payload object instead of inlining
-    const payload = {
-      model:  SELECTED_MODEL,
-      temperature: MODEL_TEMPERATURE,
-      messages: baseMessages,
-      ...(typeof tools !== 'undefined' ? { tools } : {})
-    };
-    
-    // 3) Force tool usage in deep-dive for theology/civic
-    if (deepDive && (isTheo || isCivic)) {
-      payload.tool_choice = 'required'; // <- THIS is the key line
-    }
-    
-    // 4) Send the request using the payload
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+ async function openai(messages, toolResultsSoFar = 0, maxTools = (deepDive ? 6 : 2), toolActivity = []) {
+  // choose model & temp as you already do above
+  const payload = {
+    model: SELECTED_MODEL,
+    temperature: MODEL_TEMPERATURE,
+    messages,               // ✅ use the evolving messages array
+    tools,                  // your tool defs
+    ...(deepDive ? { tool_choice: 'auto', max_tokens: 900 } : { max_tokens: 500 })
+  };
 
-    const bodyText = await aiRes.text();
-    if (!aiRes.ok) {
-      return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText.slice(0,1200), toolActivity };
-    }
-    let data;
-    try { data = JSON.parse(bodyText); }
-    catch { return { type:'error', error:'JSON parse error', body: bodyText.slice(0,1200), toolActivity }; }
+  const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
 
-    const msg = data?.choices?.[0]?.message;
-    const toolCalls = msg?.tool_calls || [];
+  const bodyText = await aiRes.text();
+  if (!aiRes.ok) return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText, toolActivity };
 
-    if (toolCalls.length && toolResultsSoFar < maxTools) {
-      let newMessages = messages.concat(msg);
-      for (const tc of toolCalls) {
-        if (tc.type === 'function') {
-          const fname = tc.function?.name;
-          let args = {};
-          try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-          let result;
-          
-          if (fname === 'searchApproved') {
-            // OLD:
-            // result = await searchApproved(String(args.query || ''));
-          
-            // NEW (accept either 'q' or 'query'; ignore if empty):
-            const q = String(args.q ?? args.query ?? '').trim();
-            result = await searchApproved(q);
+  let data; try { data = JSON.parse(bodyText); }
+  catch { return { type:'error', error:'JSON parse error', body: bodyText.slice(0,1200), toolActivity }; }
+
+  const msg = data?.choices?.[0]?.message;
+  const toolCalls = msg?.tool_calls || [];
+
+  if (toolCalls.length && toolResultsSoFar < maxTools) {
+    // include the assistant's tool_calls turn
+    let newMessages = messages.concat({ role: 'assistant', content: msg.content || '', tool_calls: toolCalls });
+
+    for (const tc of toolCalls) {
+      if (tc.type !== 'function') continue;
+      const fname = tc.function?.name;
+      let args = {};
+      try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+
+      let result;
+      if (fname === 'searchApproved') {
+        const q = String(args.q ?? args.query ?? '').trim();
+        result = await searchApproved(q || 'baptism');  // ensure non-empty so the model can iterate
+      } else if (fname === 'fetchApproved') {
+        const url = String(args.url ?? '').trim();
+        if (!url) {
+          result = { ok:false, error:'Missing URL for fetchApproved' };
+        } else if (!/^https:\/\/(wels\.net|www\.wisluthsem\.org|www\.christlutheran\.com)\//.test(url)) {
+          result = { ok:false, error:'URL not on allow-list', url };
+        } else {
+          try {
+            result = await fetchApproved(url, deepDive ? 15000 : 8000);
+          } catch (e) {
+            result = { ok:false, error:String(e), url };
           }
-
-          } else if (fname === 'fetchApproved') {
-            const url = String(args.url ?? '').trim();
-            if (!url) {
-              result = { ok: false, error: 'Missing URL for fetchApproved' };
-            } else if (!/^https:\/\/(wels\.net|www\.wisluthsem\.org|www\.christlutheran\.com)\//.test(url)) {
-              result = { ok: false, error: 'URL not on allow-list', url };
-            } else {
-              try {
-                result = await fetchApproved(url, /* timeoutMs */ deepDive ? 15000 : 8000);
-              } catch (e) {
-                result = { ok: false, error: String(e), url };
-              }
-            }
-          }
-
-          toolActivity.push({ tool: fname, args, ok: !!result.ok, note: result.url || result.query || null });
-          newMessages = newMessages.concat({ role:'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
         }
+      } else {
+        result = { ok:false, error:'Unknown tool' };
       }
-      return openai(newMessages, toolResultsSoFar + 1, maxTools, toolActivity);
-    }
 
-    const finalText = (msg?.content || '').trim();
-    if (!finalText) {
-      // last resort: we did tool work but got empty content; ask the model once more to compose
-      // (Quick approach) return a friendly line instead of blank:
-      return { type:'final',
-               content: 'Sorry—I gathered sources but had trouble composing the answer. Please tap “Dig deeper” again and I’ll try once more.',
-               toolActivity };
+      toolActivity.push({ tool: fname, args, ok: !!result.ok, note: result.url || result.query || null });
+      newMessages = newMessages.concat({
+        role: 'tool',
+        tool_call_id: tc.id,
+        name: fname,
+        content: JSON.stringify(result)
+      });
     }
-    return { type:'final', content: finalText, toolActivity };
-
+    // recurse so the model can read tool outputs and write the final answer
+    return openai(newMessages, toolResultsSoFar + 1, maxTools, toolActivity);
   }
+
+  const finalText = (msg?.content || '').trim();
+  if (!finalText) {
+    return {
+      type: 'final',
+      content: 'Sorry—I gathered sources but had trouble composing the answer. Please tap “Dig deeper” again and I’ll try once more.',
+      toolActivity
+    };
+  }
+  return { type:'final', content: finalText, toolActivity };
+}
+
 
   try {
     const result = await openai(baseMessages, 0, MAX_TOOL_CALLS, []);
