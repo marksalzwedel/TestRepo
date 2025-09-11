@@ -456,16 +456,16 @@ module.exports = async function handler(req, res) {
           let args = {};
           try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
           let result;
-
+          
           if (fname === 'searchApproved') {
-          // BEFORE:
-          // result = await searchApproved(String(args.query || ''));
-        
-          // AFTER (accept either q or query, plus optional site):
-          const q    = String(args.q ?? args.query ?? '').trim();
-          const site = String(args.site ?? '').trim(); // ok if empty
-          result = await searchApproved(q, site);
-        }
+            // OLD:
+            // result = await searchApproved(String(args.query || ''));
+          
+            // NEW (accept either 'q' or 'query'; ignore if empty):
+            const q = String(args.q ?? args.query ?? '').trim();
+            result = await searchApproved(q);
+          }
+
         } else if (fname === 'fetchApproved') {
           // BEFORE:
           // result = await fetchApproved(String(args.url || ''), /*timeoutMs*/ deepDive ? 6000 : 4500);
