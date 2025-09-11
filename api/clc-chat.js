@@ -115,11 +115,19 @@ function isTheologyQuestion(q) {
     'law and gospel','repentance','forgiveness','confession','absolution',
     'scripture','bible','inerrancy','creation','evolution','trinity','triune',
     'jesus','christ','holy spirit','sacrament','sacraments','liturgy',
-    'predestination','election','good works','means of grace', 'god', 'christian', 'lutheran', 'teaching', 'wels'
+    'predestination','election','good works','means of grace', 'god', 'christian', 'lutheran', 'teaching', 'wels', 'baptize'
   ];
   return terms.some(t => s.includes(t));
 }
 
+function isLocalInfoQuestion(q) {
+  const s = q.toLowerCase();
+  // cover quick church logistics: service time, address, map, staff, events
+  return /\b(service time|times?|worship|schedule|when|address|location|directions|parking|map|phone|email|contact|staff|pastor|calendar|event|livestream|live stream)\b/.test(s)
+         || s.includes('where are you')
+         || s.includes('how do i get there')
+         || s.includes('what time is worship');
+}
 
 function civicBoostSections(query, allSections){
   if (!isCivicQuestion(query)) return [];
@@ -450,14 +458,22 @@ module.exports = async function handler(req, res) {
           let result;
 
           if (fname === 'searchApproved') {
-            // hint: if user asked a theology question and not deepDive, prefer short search terms
-            result = await searchApproved(String(args.query || ''));
-          } else if (fname === 'fetchApproved') {
-            result = await fetchApproved(String(args.url || ''), /*timeoutMs*/ deepDive ? 6000 : 4500);
-          } else {
-            result = { ok:false, error:'Unknown tool' };
-          }
-
+          // BEFORE:
+          // result = await searchApproved(String(args.query || ''));
+        
+          // AFTER (accept either q or query, plus optional site):
+          const q    = String(args.q ?? args.query ?? '').trim();
+          const site = String(args.site ?? '').trim(); // ok if empty
+          result = await searchApproved(q, site);
+        }
+        } else if (fname === 'fetchApproved') {
+          // BEFORE:
+          // result = await fetchApproved(String(args.url || ''), /*timeoutMs*/ deepDive ? 6000 : 4500);
+        
+          // AFTER: give deep-dive more time, normal a bit more too
+          const url = String(args.url ?? '').trim();
+          result = await fetchApproved(url, /*timeoutMs*/ deepDive ? 15000 : 8000);
+        }
           toolActivity.push({ tool: fname, args, ok: !!result.ok, note: result.url || result.query || null });
           newMessages = newMessages.concat({ role:'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
         }
@@ -465,7 +481,16 @@ module.exports = async function handler(req, res) {
       return openai(newMessages, toolResultsSoFar + 1, maxTools, toolActivity);
     }
 
-    return { type:'final', content: msg?.content?.trim() || '', toolActivity };
+    const finalText = (msg?.content || '').trim();
+    if (!finalText) {
+      // last resort: we did tool work but got empty content; ask the model once more to compose
+      // (Quick approach) return a friendly line instead of blank:
+      return { type:'final',
+               content: 'Sorry—I gathered sources but had trouble composing the answer. Please tap “Dig deeper” again and I’ll try once more.',
+               toolActivity };
+    }
+    return { type:'final', content: finalText, toolActivity };
+
   }
 
   try {
@@ -479,7 +504,9 @@ module.exports = async function handler(req, res) {
 
     // Suggest deep dive when appropriate (phase 1 UX hint for your client)
     // NEW: offer deep dive for theology OR civic questions
-    const offerDeepDive = !deepDive && (isTheologyQuestion(text) || isCivicQuestion(text));
+    // previously: const offerDeepDive = !deepDive && (isTheologyQuestion(text) || isCivicQuestion(text));
+    const offerDeepDive = !deepDive && !isLocalInfoQuestion(text);
+
 
     return res.status(200).json({
       reply,
