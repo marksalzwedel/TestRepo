@@ -427,8 +427,12 @@ module.exports = async function handler(req, res) {
     body: JSON.stringify(payload)
   });
 
-  const bodyText = await aiRes.text();
-  if (!aiRes.ok) return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText, toolActivity };
+const bodyText = await aiRes.text();
+if (!aiRes.ok) {
+  console.error('OpenAI error', aiRes.status, bodyText); // <— shows in Vercel logs
+  return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText, toolActivity };
+}
+
 
   let data; try { data = JSON.parse(bodyText); }
   catch { return { type:'error', error:'JSON parse error', body: bodyText.slice(0,1200), toolActivity }; }
@@ -454,7 +458,7 @@ module.exports = async function handler(req, res) {
         const url = String(args.url ?? '').trim();
         if (!url) {
           result = { ok:false, error:'Missing URL for fetchApproved' };
-        } else if (!/^https:\/\/(wels\.net|www\.wisluthsem\.org|www\.christlutheran\.com)\//.test(url)) {
+} else if (!/^https:\/\/(www\.)?(wels\.net|wisluthsem\.org|christlutheran\.com)\//.test(url)) {
           result = { ok:false, error:'URL not on allow-list', url };
         } else {
           try {
