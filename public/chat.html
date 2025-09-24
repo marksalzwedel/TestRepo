@@ -60,3 +60,89 @@
         box.innerHTML = `
           <div style="font-size:.95rem; margin-bottom:8px;">Would you like to chat with a person?</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button type="button" id="followup-open-chat">Chat with Pastor/Staff</button>
+          </div>
+          <div class="note">
+            You can also reach Pastor at ${CHURCH_PHONE} or ${PASTOR_EMAIL}.
+          </div>
+        `;
+        log.appendChild(box);
+
+        const btn = box.querySelector('#followup-open-chat');
+        btn?.addEventListener('click', () => {
+          if (window.HubSpotConversations?.widget?.open) {
+            window.HubSpotConversations.widget.open();
+          } else {
+            window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+            window.hsConversationsOnReady.push(() =>
+              window.HubSpotConversations?.widget?.open?.()
+            );
+            setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+          }
+        });
+
+        log.scrollTop = log.scrollHeight;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+
+        add('user', text);
+        input.value = '';
+
+        try {
+          const r = await fetch('/api/clc-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+
+          const raw = await r.text();
+          let data;
+          try { data = JSON.parse(raw); }
+          catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
+
+          const botText = data.reply || data.content || (data.message && data.message.content) || '(no reply)';
+          add('assistant', botText);
+
+          // Always show follow-ups after a reply
+          showFollowups();
+
+          // Deep-dive button opens the custom GPT instead of doing a second API pass
+          if (data.offerDeepDive) {
+            const wrap = document.createElement('div');
+            wrap.className = 'deep-dive-offer';
+
+            const hint = document.createElement('div');
+            hint.textContent = 'Explore a more thorough answer with our CLC-GPT.';
+            hint.style.fontSize = '0.9rem';
+            hint.style.opacity = '0.85';
+            hint.style.marginBottom = '6px';
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = 'Dig deeper with the CLC-GPT';
+            btn.onclick = () => {
+              window.open(CLGPT_URL, '_blank', 'noopener,noreferrer');
+              wrap.remove();
+            };
+
+            wrap.appendChild(hint);
+            wrap.appendChild(btn);
+            log.appendChild(wrap);
+            log.scrollTop = log.scrollHeight;
+          }
+        } catch (err) {
+          add('assistant', 'Sorry—there was an error contacting the server.');
+          console.error(err);
+        }
+      });
+    });
+  </script>
+
+  <!-- HubSpot loader -->
+  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
+</body>
+</html>
