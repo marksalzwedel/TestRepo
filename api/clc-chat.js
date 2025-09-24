@@ -428,7 +428,24 @@ module.exports = async function handler(req, res) {
   });
 
   const bodyText = await aiRes.text();
-  if (!aiRes.ok) return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText, toolActivity };
+const bodyText = await aiRes.text();
+if (!aiRes.ok) {
+  console.error('OpenAI error', aiRes.status, bodyText);
+
+  // Friendly fallback for quota/rate issues (prevents 502 → “(no reply)”)
+  if (aiRes.status === 429) {
+    return {
+      type: 'final',
+      content:
+        "We're at capacity on our AI quota right now, so I can’t fetch a full answer. " +
+        "Would you like to contact our staff instead? You can call (952) 937-1233 or email info@christlutheran.com.",
+      toolActivity
+    };
+  }
+
+  return { type:'error', error:`OpenAI ${aiRes.status}`, body: bodyText, toolActivity };
+}
+
 
   let data; try { data = JSON.parse(bodyText); }
   catch { return { type:'error', error:'JSON parse error', body: bodyText.slice(0,1200), toolActivity }; }
