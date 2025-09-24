@@ -9,18 +9,12 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem auto; max-width: 720px; line-height: 1.5; }
     h1 { margin: 0 0 1rem 0; }
     #bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
-    #talk-to-human {
-      padding: .5rem .8rem; border: 1px solid #0056b3; border-radius: 6px;
-      background: #0d6efd; color: #fff; font-weight: 600; cursor: pointer;
-    }
-    #talk-to-human[disabled] { opacity: .5; cursor: not-allowed; }
     #log { border: 1px solid #ccc; padding: 1rem; min-height: 260px; border-radius: 8px; background: #fff; }
     .msg { margin: .25rem 0; white-space: pre-wrap; }
     .user { font-weight: 600; }
     form { margin-top: 1rem; display: flex; gap: .5rem; }
     input[type="text"] { flex: 1; padding: .6rem; border-radius: 6px; border: 1px solid #bbb; }
     button[type="submit"] { padding: .6rem 1rem; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; cursor: pointer; }
-    .hint { color: #666; font-size: .9rem; margin-top: .5rem; }
     .handoff {
       margin-top: .75rem; padding: .75rem; border: 1px solid #e0b800; background: #fff9db; border-radius: 8px;
     }
@@ -36,7 +30,6 @@
 <body>
   <div id="bar">
     <h1>CLC Chatbot</h1>
-    <button id="talk-to-human" title="Open live chat">Talk to a person</button>
   </div>
 
   <div id="log" aria-live="polite"></div>
@@ -51,206 +44,6 @@
     const log = document.getElementById('log');
     const form = document.getElementById('chat-form');
     const input = document.getElementById('text');
-    const talkBtn = document.getElementById('talk-to-human');
 
     // ➕ Follow-up config
-    const CLGPT_URL = 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot';
-    const PASTOR_EMAIL = 'info@christlutheran.com';
-    const CHURCH_PHONE = '(952) 937-1233';
-
-    function add(role, text) {
-      const p = document.createElement('p');
-      p.className = 'msg ' + role;
-      p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
-      log.appendChild(p);
-      log.scrollTop = log.scrollHeight;
-    }
-
-    function showHandoffBanner() {
-      const div = document.createElement('div');
-      div.className = 'handoff';
-      div.innerHTML = `
-        <strong>Would you like to chat with a person?</strong><br/>
-        We’re happy to help—click below and a staff member will be with you soon.<br/>
-        <button id="open-hs">Open live chat</button>
-      `;
-      log.appendChild(div);
-      const btn = div.querySelector('#open-hs');
-      btn.addEventListener('click', () => {
-        if (window.HubSpotConversations?.widget?.open) {
-          window.HubSpotConversations.widget.open();
-        } else {
-          window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-          window.hsConversationsOnReady.push(() =>
-            window.HubSpotConversations?.widget?.open?.()
-          );
-          setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-        }
-      });
-      log.scrollTop = log.scrollHeight;
-    }
-
-    // ➕ Follow-ups block (Custom GPT + chat + email + phone)
-    function showFollowups() {
-      const box = document.createElement('div');
-      box.style.marginTop = '8px';
-      box.style.padding = '10px';
-      box.style.border = '1px solid #e5e7eb';
-      box.style.borderRadius = '8px';
-      box.style.background = '#fafafa';
-      box.innerHTML = `
-        <div style="font-size:.95rem; margin-bottom:8px;">Would you like to continue?</div>
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">
-          <a href="${CLGPT_URL}" target="_blank" rel="noopener noreferrer"
-             style="padding:8px 12px; border-radius:8px; background:#0d6efd; color:#fff; text-decoration:none; font-weight:600;">
-             Ask the CLC Chatbot
-          </a>
-          <button type="button" id="followup-open-chat"
-             style="padding:8px 12px; border-radius:8px; background:#4f46e5; color:#fff; border:none; font-weight:600; cursor:pointer;">
-             Chat with Pastor/Staff
-          </button>
-          <a href="mailto:${PASTOR_EMAIL}"
-             style="padding:8px 12px; border-radius:8px; background:#059669; color:#fff; text-decoration:none; font-weight:600;">
-             Email Pastor Olson
-          </a>
-          <a href="tel:${CHURCH_PHONE.replace(/[^+\d]/g,'')}"
-             style="padding:8px 12px; border-radius:8px; background:#374151; color:#fff; text-decoration:none; font-weight:600;">
-             Call the Church Office
-          </a>
-        </div>
-        <div style="color:#6b7280; font-size:.85rem; margin-top:8px;">
-          You can also reach Pastor at ${CHURCH_PHONE} or ${PASTOR_EMAIL}.
-        </div>
-      `;
-      log.appendChild(box);
-
-      // Wire HubSpot opener (same behavior as header button)
-      const btn = box.querySelector('#followup-open-chat');
-      btn?.addEventListener('click', () => {
-        if (window.HubSpotConversations?.widget?.open) {
-          window.HubSpotConversations.widget.open();
-        } else {
-          window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-          window.hsConversationsOnReady.push(() =>
-            window.HubSpotConversations?.widget?.open?.()
-          );
-          setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-        }
-      });
-
-      log.scrollTop = log.scrollHeight;
-    }
-
-    // Submit handler with deep-dive support
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-
-      add('user', text);
-      input.value = '';
-
-      try {
-        const r = await fetch('/api/clc-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-
-        const raw = await r.text();
-        let data;
-        try { data = JSON.parse(raw); }
-        catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
-
-        // tolerant extraction + render
-        const botText = data.reply || data.content || (data.message && data.message.content) || '(no reply)';
-        add('assistant', botText);
-
-        // handoff banner if refusal line matched
-        if (data.handoff) showHandoffBanner?.();
-
-        // ➕ Always show follow-up actions after a reply
-        showFollowups();
-
-        // (Optional) Deep-dive button stays for now; we can remove later if you want
-        if (data.offerDeepDive && data.deepDiveHint) {
-          const wrap = document.createElement('div');
-          wrap.className = 'deep-dive-offer';
-
-          const hint = document.createElement('div');
-          hint.textContent = data.deepDiveHint;
-          hint.style.fontSize = '0.9rem';
-          hint.style.opacity = '0.85';
-          hint.style.marginBottom = '6px';
-
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = 'Dig deeper';
-          btn.onclick = async () => {
-            btn.disabled = true;
-            btn.textContent = 'Researching…';
-            try {
-              const r2 = await fetch('/api/clc-chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, deepDive: true })
-              });
-              const raw2 = await r2.text();
-              let data2;
-              try { data2 = JSON.parse(raw2); }
-              catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
-              const botText2 = data2.reply || data2.content || (data2.message && data2.message.content) || '(no reply)';
-              add('assistant', botText2);
-            } catch (err) {
-              add('assistant', 'Sorry—there was an error during the deep dive.');
-              console.error(err);
-            } finally {
-              wrap.remove();
-            }
-          };
-
-          wrap.appendChild(hint);
-          wrap.appendChild(btn);
-          log.appendChild(wrap);
-          log.scrollTop = log.scrollHeight;
-        }
-
-      } catch (err) {
-        add('assistant', 'Sorry—there was an error contacting the server.');
-        console.error(err);
-      }
-    });
-
-    // HubSpot launcher logic (kept outside of log)
-    function enableTalkButton() {
-      if (window.HubSpotConversations?.widget?.open) {
-        talkBtn.disabled = false;
-        talkBtn.title = '';
-      } else {
-        talkBtn.disabled = true;
-        talkBtn.title = 'Loading chat…';
-      }
-    }
-
-    talkBtn.addEventListener('click', () => {
-      if (window.HubSpotConversations?.widget?.open) {
-        window.HubSpotConversations.widget.open();
-      } else {
-        window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-        window.hsConversationsOnReady.push(() =>
-          window.HubSpotConversations?.widget?.open?.()
-        );
-        setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
-      }
-    });
-
-    // initialize + re-enable once HubSpot loads
-    enableTalkButton();
-    window.hsConversationsOnReady = window.hsConversationsOnReady || [];
-    window.hsConversationsOnReady.push(enableTalkButton);
-  </script>
-
-  <!-- HubSpot loader: replace with your actual portal ID if different -->
-  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
-</body>
-</html>
+    const
