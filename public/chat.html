@@ -84,7 +84,7 @@
         log.scrollTop = log.scrollHeight;
       }
 
-      // Follow-ups block (Custom GPT + chat)
+      // Follow-ups block (only: Chat with Pastor/Staff + grey reminder)
       function showFollowups() {
         const box = document.createElement('div');
         box.style.marginTop = '8px';
@@ -95,10 +95,6 @@
         box.innerHTML = `
           <div style="font-size:.95rem; margin-bottom:8px;">Would you like to continue?</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
-            <a href="${CLGPT_URL}" target="_blank" rel="noopener noreferrer"
-               style="padding:8px 12px; border-radius:8px; background:#0d6efd; color:#fff; text-decoration:none; font-weight:600;">
-               Ask the CLC Chatbot
-            </a>
             <button type="button" id="followup-open-chat"
                style="padding:8px 12px; border-radius:8px; background:#4f46e5; color:#fff; border:none; font-weight:600; cursor:pointer;">
                Chat with Pastor/Staff
@@ -156,41 +152,23 @@
           // Always show follow-up actions after a reply
           showFollowups();
 
-          // Keep deep-dive until we remove server-side flag
-          if (data.offerDeepDive && data.deepDiveHint) {
+          // ✅ Replace deep-dive behavior: open the Custom GPT instead of second pass
+          if (data.offerDeepDive) {
             const wrap = document.createElement('div');
             wrap.className = 'deep-dive-offer';
 
             const hint = document.createElement('div');
-            hint.textContent = data.deepDiveHint;
+            hint.textContent = 'Explore a more thorough answer with our CLC-GPT.';
             hint.style.fontSize = '0.9rem';
             hint.style.opacity = '0.85';
             hint.style.marginBottom = '6px';
 
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.textContent = 'Dig deeper';
-            btn.onclick = async () => {
-              btn.disabled = true;
-              btn.textContent = 'Researching…';
-              try {
-                const r2 = await fetch('/api/clc-chat', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ text, deepDive: true })
-                });
-                const raw2 = await r2.text();
-                let data2;
-                try { data2 = JSON.parse(raw2); }
-                catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
-                const botText2 = data2.reply || data2.content || (data2.message && data2.message.content) || '(no reply)';
-                add('assistant', botText2);
-              } catch (err) {
-                add('assistant', 'Sorry—there was an error during the deep dive.');
-                console.error(err);
-              } finally {
-                wrap.remove();
-              }
+            btn.textContent = 'Dig deeper with the CLC-GPT';
+            btn.onclick = () => {
+              window.open(CLGPT_URL, '_blank', 'noopener,noreferrer');
+              wrap.remove();
             };
 
             wrap.appendChild(hint);
