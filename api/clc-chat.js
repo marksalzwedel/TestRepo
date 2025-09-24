@@ -517,12 +517,6 @@ const offerDeepDive = false;
 // canonical text
 const content = result?.content || REFUSAL_LINE;
 
-// detect if we hit the refusal line (some UIs use this)
-const handoff = new RegExp(
-  REFUSAL_LINE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-  'i'
-).test(content);
-
 return res.status(200).json({
   // === NEW canonical field ===
   content,
