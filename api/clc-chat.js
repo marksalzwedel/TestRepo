@@ -428,7 +428,6 @@ module.exports = async function handler(req, res) {
   });
 
   const bodyText = await aiRes.text();
-const bodyText = await aiRes.text();
 if (!aiRes.ok) {
   console.error('OpenAI error', aiRes.status, bodyText);
 
