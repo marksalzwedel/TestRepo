@@ -53,6 +53,11 @@
     const input = document.getElementById('text');
     const talkBtn = document.getElementById('talk-to-human');
 
+    // ➕ Follow-up config
+    const CLGPT_URL = 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot';
+    const PASTOR_EMAIL = 'info@christlutheran.com';
+    const CHURCH_PHONE = '(952) 937-1233';
+
     function add(role, text) {
       const p = document.createElement('p');
       p.className = 'msg ' + role;
@@ -85,6 +90,57 @@
       log.scrollTop = log.scrollHeight;
     }
 
+    // ➕ Follow-ups block (Custom GPT + chat + email + phone)
+    function showFollowups() {
+      const box = document.createElement('div');
+      box.style.marginTop = '8px';
+      box.style.padding = '10px';
+      box.style.border = '1px solid #e5e7eb';
+      box.style.borderRadius = '8px';
+      box.style.background = '#fafafa';
+      box.innerHTML = `
+        <div style="font-size:.95rem; margin-bottom:8px;">Would you like to continue?</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <a href="${CLGPT_URL}" target="_blank" rel="noopener noreferrer"
+             style="padding:8px 12px; border-radius:8px; background:#0d6efd; color:#fff; text-decoration:none; font-weight:600;">
+             Ask the CLC Chatbot
+          </a>
+          <button type="button" id="followup-open-chat"
+             style="padding:8px 12px; border-radius:8px; background:#4f46e5; color:#fff; border:none; font-weight:600; cursor:pointer;">
+             Chat with Pastor/Staff
+          </button>
+          <a href="mailto:${PASTOR_EMAIL}"
+             style="padding:8px 12px; border-radius:8px; background:#059669; color:#fff; text-decoration:none; font-weight:600;">
+             Email Pastor Olson
+          </a>
+          <a href="tel:${CHURCH_PHONE.replace(/[^+\d]/g,'')}"
+             style="padding:8px 12px; border-radius:8px; background:#374151; color:#fff; text-decoration:none; font-weight:600;">
+             Call the Church Office
+          </a>
+        </div>
+        <div style="color:#6b7280; font-size:.85rem; margin-top:8px;">
+          You can also reach Pastor at ${CHURCH_PHONE} or ${PASTOR_EMAIL}.
+        </div>
+      `;
+      log.appendChild(box);
+
+      // Wire HubSpot opener (same behavior as header button)
+      const btn = box.querySelector('#followup-open-chat');
+      btn?.addEventListener('click', () => {
+        if (window.HubSpotConversations?.widget?.open) {
+          window.HubSpotConversations.widget.open();
+        } else {
+          window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+          window.hsConversationsOnReady.push(() =>
+            window.HubSpotConversations?.widget?.open?.()
+          );
+          setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+        }
+      });
+
+      log.scrollTop = log.scrollHeight;
+    }
+
     // Submit handler with deep-dive support
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -106,10 +162,17 @@
         try { data = JSON.parse(raw); }
         catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
 
-        add('assistant', data.reply || '(no reply)');
+        // tolerant extraction + render
+        const botText = data.reply || data.content || (data.message && data.message.content) || '(no reply)';
+        add('assistant', botText);
+
+        // handoff banner if refusal line matched
         if (data.handoff) showHandoffBanner?.();
 
-        // Offer deep dive button if available
+        // ➕ Always show follow-up actions after a reply
+        showFollowups();
+
+        // (Optional) Deep-dive button stays for now; we can remove later if you want
         if (data.offerDeepDive && data.deepDiveHint) {
           const wrap = document.createElement('div');
           wrap.className = 'deep-dive-offer';
@@ -136,7 +199,8 @@
               let data2;
               try { data2 = JSON.parse(raw2); }
               catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
-              add('assistant', data2.reply || '(no reply)');
+              const botText2 = data2.reply || data2.content || (data2.message && data2.message.content) || '(no reply)';
+              add('assistant', botText2);
             } catch (err) {
               add('assistant', 'Sorry—there was an error during the deep dive.');
               console.error(err);
