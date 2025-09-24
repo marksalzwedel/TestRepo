@@ -107,7 +107,33 @@
         catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
 
         add('assistant', data.reply || '(no reply)');
-        if (data.handoff) showHandoffBanner?.();
+ if (data.options) {
+  const div = document.createElement('div');
+  div.className = 'options';
+  data.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = opt.label;
+    btn.type = 'button';
+    btn.style.marginRight = '6px';
+    if (opt.type === 'link') {
+      btn.onclick = () => window.open(opt.url, '_blank');
+    } else if (opt.type === 'action' && opt.action === 'openHubSpot') {
+      btn.onclick = () => window.HubSpotConversations?.widget?.open?.();
+    }
+    div.appendChild(btn);
+  });
+  if (data.footer) {
+    const foot = document.createElement('div');
+    foot.className = 'hint';
+    foot.textContent = data.footer;
+    div.appendChild(foot);
+  }
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+        
+    /*    if (data.handoff) showHandoffBanner?.();
 
         // Offer deep dive button if available
         if (data.offerDeepDive && data.deepDiveHint) {
@@ -150,6 +176,7 @@
           log.appendChild(wrap);
           log.scrollTop = log.scrollHeight;
         }
+        */
 
       } catch (err) {
         add('assistant', 'Sorry—there was an error contacting the server.');
