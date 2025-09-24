@@ -513,19 +513,19 @@ module.exports = async function handler(req, res) {
     const offerDeepDive = !deepDive && !isLocalInfoQuestion(text);
 
 
-    return res.status(200).json({
-      reply,
-      handoff,
-      version: VERSION,
-      deepDive,
-      offerDeepDive,                                   // <— your UI can show "Dig deeper" button
-      deepDiveHint: offerDeepDive
-        ? 'Would you like me to dig deeper into this topic for a more thorough answer? (It may take a minute or two)'
-        : undefined,
-      contextSectionsUsed: pickedArr.length,
-      pickedTitles,
-      toolActivity: result.toolActivity
-    });
+return res.status(200).json({
+  reply: result.content || REFUSAL_LINE,
+  handoff: false,
+  version: VERSION,
+  deepDive,
+  offerDeepDive: !deepDive,
+  options: [
+    { type: 'link', label: 'Ask the full CLC Chatbot', url: 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot' },
+    { type: 'action', label: 'Chat with Pastor Olson', action: 'openHubSpot' }
+  ],
+  footer: 'For pastoral care you can also call (952) 937-1233 or email info@christlutheran.com.'
+});
+    
   } catch (e) {
     return res.status(500).json({ error:'Server error', details: String(e), version: VERSION });
   }
