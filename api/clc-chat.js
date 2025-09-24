@@ -510,21 +510,44 @@ module.exports = async function handler(req, res) {
     // Suggest deep dive when appropriate (phase 1 UX hint for your client)
     // NEW: offer deep dive for theology OR civic questions
     // previously: const offerDeepDive = !deepDive && (isTheologyQuestion(text) || isCivicQuestion(text));
-    const offerDeepDive = !deepDive && !isLocalInfoQuestion(text);
+// Suggest deep dive when appropriate (legacy var still present for UI)
+// Keep legacy deep-dive flag off for now
+const offerDeepDive = false;
 
+// canonical text
+const content = result?.content || REFUSAL_LINE;
+
+// detect if we hit the refusal line (some UIs use this)
+const handoff = new RegExp(
+  REFUSAL_LINE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  'i'
+).test(content);
 
 return res.status(200).json({
-  reply: result.content || REFUSAL_LINE,
-  handoff: false,
+  // === NEW canonical field ===
+  content,
+
+  // === Back-compat for existing UI paths ===
+  reply: content,                                  // old key some renderers use
+  message: { role: 'assistant', content },         // some UIs expect a message object
+  handoff,                                         // you computed this earlier; keep it
   version: VERSION,
-  deepDive,
-  offerDeepDive: !deepDive,
+  deepDive,                                        // keep if UI reads it
+  offerDeepDive,                                   // explicitly false to avoid old branches
+
+  // These three are often referenced in the UI; keep them to avoid undefined errors
+  contextSectionsUsed: pickedArr.length,
+  pickedTitles,                                    // from earlier in your handler
+  toolActivity: result.toolActivity || [],         // safe default
+
+  // === Your new follow-up UI payload ===
   options: [
     { type: 'link', label: 'Ask the full CLC Chatbot', url: 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot' },
-    { type: 'action', label: 'Chat with Pastor Olson', action: 'openHubSpot' }
+    { type: 'action', label: 'Chat with Pastor Olson', action: 'openHubSpot' } // ensure client handles this action
   ],
   footer: 'For pastoral care you can also call (952) 937-1233 or email info@christlutheran.com.'
 });
+
     
   } catch (e) {
     return res.status(500).json({ error:'Server error', details: String(e), version: VERSION });
