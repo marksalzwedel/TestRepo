@@ -22,7 +22,6 @@
       margin-top: .5rem; padding: .4rem .8rem; border: 1px solid #444; border-radius: 6px;
       background: #0d6efd; color: #fff; font-weight: 600; cursor: pointer;
     }
-    /* Deep-dive offer styling */
     .deep-dive-offer { margin: 8px 0 4px; padding: 8px; border: 1px dashed #bbb; border-radius: 8px; background: #fafafa; }
     .deep-dive-offer button { padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
   </style>
@@ -41,9 +40,174 @@
 
   <!-- Main chat logic -->
   <script>
-    const log = document.getElementById('log');
-    const form = document.getElementById('chat-form');
-    const input = document.getElementById('text');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[CLC] script initialized');
 
-    // ➕ Follow-up config
-    const
+      const log = document.getElementById('log');
+      const form = document.getElementById('chat-form');
+      const input = document.getElementById('text');
+
+      // Follow-up config
+      const CLGPT_URL = 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot';
+      const PASTOR_EMAIL = 'info@christlutheran.com';
+      const CHURCH_PHONE = '(952) 937-1233';
+
+      function add(role, text) {
+        const p = document.createElement('p');
+        p.className = 'msg ' + role;
+        p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
+        log.appendChild(p);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function showHandoffBanner() {
+        const div = document.createElement('div');
+        div.className = 'handoff';
+        div.innerHTML = `
+          <strong>Would you like to chat with a person?</strong><br/>
+          We’re happy to help—click below and a staff member will be with you soon.<br/>
+          <button id="open-hs">Open live chat</button>
+        `;
+        log.appendChild(div);
+        const btn = div.querySelector('#open-hs');
+        btn.addEventListener('click', () => {
+          if (window.HubSpotConversations?.widget?.open) {
+            window.HubSpotConversations.widget.open();
+          } else {
+            window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+            window.hsConversationsOnReady.push(() =>
+              window.HubSpotConversations?.widget?.open?.()
+            );
+            setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+          }
+        });
+        log.scrollTop = log.scrollHeight;
+      }
+
+      // Follow-ups block (Custom GPT + chat)
+      function showFollowups() {
+        const box = document.createElement('div');
+        box.style.marginTop = '8px';
+        box.style.padding = '10px';
+        box.style.border = '1px solid #e5e7eb';
+        box.style.borderRadius = '8px';
+        box.style.background = '#fafafa';
+        box.innerHTML = `
+          <div style="font-size:.95rem; margin-bottom:8px;">Would you like to continue?</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <a href="${CLGPT_URL}" target="_blank" rel="noopener noreferrer"
+               style="padding:8px 12px; border-radius:8px; background:#0d6efd; color:#fff; text-decoration:none; font-weight:600;">
+               Ask the CLC Chatbot
+            </a>
+            <button type="button" id="followup-open-chat"
+               style="padding:8px 12px; border-radius:8px; background:#4f46e5; color:#fff; border:none; font-weight:600; cursor:pointer;">
+               Chat with Pastor/Staff
+            </button>
+          </div>
+          <div style="color:#6b7280; font-size:.85rem; margin-top:8px;">
+            You can also reach Pastor at ${CHURCH_PHONE} or ${PASTOR_EMAIL}.
+          </div>
+        `;
+        log.appendChild(box);
+
+        // Wire HubSpot opener
+        const btn = box.querySelector('#followup-open-chat');
+        btn?.addEventListener('click', () => {
+          if (window.HubSpotConversations?.widget?.open) {
+            window.HubSpotConversations.widget.open();
+          } else {
+            window.hsConversationsOnReady = window.hsConversationsOnReady || [];
+            window.hsConversationsOnReady.push(() =>
+              window.HubSpotConversations?.widget?.open?.()
+            );
+            setTimeout(() => window.HubSpotConversations?.widget?.open?.(), 1200);
+          }
+        });
+
+        log.scrollTop = log.scrollHeight;
+      }
+
+      // Submit handler
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+
+        add('user', text);
+        input.value = '';
+
+        try {
+          const r = await fetch('/api/clc-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+
+          const raw = await r.text();
+          let data;
+          try { data = JSON.parse(raw); }
+          catch { data = { reply: 'Sorry—there was a server error. Please try again.' }; }
+
+          const botText = data.reply || data.content || (data.message && data.message.content) || '(no reply)';
+          add('assistant', botText);
+
+          if (data.handoff) showHandoffBanner?.();
+
+          // Always show follow-up actions after a reply
+          showFollowups();
+
+          // Keep deep-dive until we remove server-side flag
+          if (data.offerDeepDive && data.deepDiveHint) {
+            const wrap = document.createElement('div');
+            wrap.className = 'deep-dive-offer';
+
+            const hint = document.createElement('div');
+            hint.textContent = data.deepDiveHint;
+            hint.style.fontSize = '0.9rem';
+            hint.style.opacity = '0.85';
+            hint.style.marginBottom = '6px';
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = 'Dig deeper';
+            btn.onclick = async () => {
+              btn.disabled = true;
+              btn.textContent = 'Researching…';
+              try {
+                const r2 = await fetch('/api/clc-chat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text, deepDive: true })
+                });
+                const raw2 = await r2.text();
+                let data2;
+                try { data2 = JSON.parse(raw2); }
+                catch { data2 = { reply: 'Sorry—there was a server error during the deep dive.' }; }
+                const botText2 = data2.reply || data2.content || (data2.message && data2.message.content) || '(no reply)';
+                add('assistant', botText2);
+              } catch (err) {
+                add('assistant', 'Sorry—there was an error during the deep dive.');
+                console.error(err);
+              } finally {
+                wrap.remove();
+              }
+            };
+
+            wrap.appendChild(hint);
+            wrap.appendChild(btn);
+            log.appendChild(wrap);
+            log.scrollTop = log.scrollHeight;
+          }
+
+        } catch (err) {
+          add('assistant', 'Sorry—there was an error contacting the server.');
+          console.error(err);
+        }
+      });
+    });
+  </script>
+
+  <!-- HubSpot loader -->
+  <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/6824329.js"></script>
+</body>
+</html>
