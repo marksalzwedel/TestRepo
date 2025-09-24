@@ -18,4 +18,45 @@
     .deep-dive-offer { margin: 8px 0 4px; padding: 8px; border: 1px dashed #bbb; border-radius: 8px; background: #fafafa; }
     .deep-dive-offer button { padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
     .followups { margin-top: 8px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
-    .followups button { padding: 8px 12px; border-radius: 8px; background:#4f46e5; color:#fff; border:none; font-wei
+    .followups button { padding: 8px 12px; border-radius: 8px; background:#4f46e5; color:#fff; border:none; font-weight:600; cursor:pointer; }
+    .followups .note { color:#6b7280; font-size:.85rem; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <h1>CLC Chatbot</h1>
+  </div>
+
+  <div id="log" aria-live="polite"></div>
+
+  <form id="chat-form" autocomplete="off">
+    <input id="text" type="text" placeholder="Hi! Ask about service times, location, or a Bible question." />
+    <button type="submit">Send</button>
+  </form>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[CLC] script initialized');
+
+      const log = document.getElementById('log');
+      const form = document.getElementById('chat-form');
+      const input = document.getElementById('text');
+
+      const CLGPT_URL = 'https://chatgpt.com/g/g-685ca3ef68dc8191ac0f7247a4ece363-clc-chatbot';
+      const PASTOR_EMAIL = 'info@christlutheran.com';
+      const CHURCH_PHONE = '(952) 937-1233';
+
+      function add(role, text) {
+        const p = document.createElement('p');
+        p.className = 'msg ' + role;
+        p.innerText = (role === 'user' ? 'You: ' : 'Bot: ') + text;
+        log.appendChild(p);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function showFollowups() {
+        const box = document.createElement('div');
+        box.className = 'followups';
+        box.innerHTML = `
+          <div style="font-size:.95rem; margin-bottom:8px;">Would you like to chat with a person?</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
